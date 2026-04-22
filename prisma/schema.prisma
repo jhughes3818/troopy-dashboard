@@ -1,0 +1,24 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model TelemetryReading {
+  id         String   @id @default(cuid())
+  deviceId   String
+  voltage    Float?
+  current    Float?
+  soc        Float?
+  power      Float?
+  auxVoltage Float?
+  ttgDays    Float?
+  timestampMs BigInt
+  receivedAt DateTime @default(now())
+
+  @@index([receivedAt(sort: Desc)])
+  @@index([deviceId, receivedAt(sort: Desc)])
+}
