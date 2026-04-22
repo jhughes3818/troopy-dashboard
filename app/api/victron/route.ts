@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   MAX_REQUEST_BYTES,
@@ -11,6 +12,17 @@ import {
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 export const dynamic = "force-dynamic";
+
+type InsertTelemetryData = {
+  deviceId: string;
+  voltage: number | null;
+  current: number | null;
+  soc: number | null;
+  power: number | null;
+  auxVoltage: number | null;
+  ttgDays: number | null;
+  timestampMs: bigint;
+};
 
 function isAuthorized(request: NextRequest) {
   const configuredKey = process.env.INGEST_API_KEY;
@@ -34,6 +46,40 @@ function getLimitFromQuery(request: NextRequest) {
   if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) return DEFAULT_LIMIT;
 
   return Math.min(parsedLimit, MAX_LIMIT);
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
+}
+
+async function findReadingByIdentity(data: InsertTelemetryData) {
+  return prisma.telemetryReading.findFirst({
+    where: {
+      deviceId: data.deviceId,
+      timestampMs: data.timestampMs,
+    },
+    orderBy: { receivedAt: "desc" },
+  });
+}
+
+async function createOrFindReading(data: InsertTelemetryData) {
+  try {
+    const reading = await prisma.telemetryReading.create({ data });
+    return { reading, duplicate: false };
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error;
+    }
+
+    const reading = await findReadingByIdentity(data);
+    if (!reading) {
+      throw error;
+    }
+    return { reading, duplicate: true };
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -96,13 +142,17 @@ export async function POST(request: NextRequest) {
       timestampMs: BigInt(record.timestamp_ms),
     }));
 
-    const insertResult = await prisma.telemetryReading.createMany({
-      data,
-      skipDuplicates: true,
-    });
+    let accepted = 0;
+    let duplicates = 0;
+    for (const record of data) {
+      const result = await createOrFindReading(record);
+      if (result.duplicate) {
+        duplicates += 1;
+      } else {
+        accepted += 1;
+      }
+    }
 
-    const accepted = insertResult.count;
-    const duplicates = parsedBatch.data.records.length - accepted;
     return NextResponse.json({
       ok: true,
       mode: "batch",
@@ -133,19 +183,7 @@ export async function POST(request: NextRequest) {
     timestampMs: BigInt(payload.timestamp_ms),
   };
 
-  const insertResult = await prisma.telemetryReading.createMany({
-    data: [data],
-    skipDuplicates: true,
-  });
-  const duplicate = insertResult.count === 0;
-  const reading = await prisma.telemetryReading.findUniqueOrThrow({
-    where: {
-      deviceId_timestampMs: {
-        deviceId: data.deviceId,
-        timestampMs: data.timestampMs,
-      },
-    },
-  });
+  const { reading, duplicate } = await createOrFindReading(data);
 
   return NextResponse.json({
     ok: true,
