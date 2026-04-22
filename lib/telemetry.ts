@@ -9,8 +9,24 @@ export type RawTelemetryPayload = {
   timestamp_ms: number;
 };
 
+export type BatchTelemetryError = {
+  index: number;
+  error: string;
+};
+
 type ParseTelemetryResult =
   | { ok: true; data: RawTelemetryPayload }
+  | { ok: false; error: string };
+
+type ParseBatchTelemetryResult =
+  | {
+      ok: true;
+      data: {
+        records: RawTelemetryPayload[];
+        rejected: number;
+        errors: BatchTelemetryError[];
+      };
+    }
   | { ok: false; error: string };
 
 const NULLABLE_NUMERIC_FIELDS = [
@@ -71,6 +87,51 @@ export function parseTelemetryPayload(body: unknown): ParseTelemetryResult {
       device_id: body.device_id.trim(),
       ...parsedFields,
       timestamp_ms: body.timestamp_ms,
+    },
+  };
+}
+
+export const MAX_BATCH_RECORDS = 100;
+export const MAX_REQUEST_BYTES = 1_000_000;
+
+export function parseBatchTelemetryPayload(body: unknown): ParseBatchTelemetryResult {
+  if (!isRecord(body)) {
+    return { ok: false, error: "Body must be a JSON object." };
+  }
+
+  const records = body.records;
+  if (!Array.isArray(records)) {
+    return { ok: false, error: "records must be an array." };
+  }
+
+  if (records.length === 0) {
+    return { ok: false, error: "records must contain at least one item." };
+  }
+
+  if (records.length > MAX_BATCH_RECORDS) {
+    return {
+      ok: false,
+      error: `records cannot exceed ${MAX_BATCH_RECORDS} items per request.`,
+    };
+  }
+
+  const validRecords: RawTelemetryPayload[] = [];
+  const errors: BatchTelemetryError[] = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const parsed = parseTelemetryPayload(records[index]);
+    if (parsed.ok) {
+      validRecords.push(parsed.data);
+      continue;
+    }
+    errors.push({ index, error: parsed.error });
+  }
+
+  return {
+    ok: true,
+    data: {
+      records: validRecords,
+      rejected: errors.length,
+      errors,
     },
   };
 }
