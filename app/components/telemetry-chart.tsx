@@ -34,13 +34,18 @@ function formatTick(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function formatTooltipLabel(value: string) {
-  return new Date(value).toLocaleString();
+function formatTooltipLabel(label: unknown) {
+  if (typeof label === "string" || typeof label === "number") {
+    return new Date(label).toLocaleString();
+  }
+
+  return String(label ?? "");
 }
 
-function formatTooltipValue(value: number | null) {
-  if (typeof value !== "number") return "-";
-  return value.toFixed(2);
+function formatTooltipValue(value: unknown): string {
+  if (typeof value === "number") return value.toFixed(2);
+  if (Array.isArray(value)) return value.map((entry) => formatTooltipValue(entry)).join(" - ");
+  return "-";
 }
 
 export function TelemetryChart({ data }: TelemetryChartProps) {
@@ -89,7 +94,7 @@ export function TelemetryChart({ data }: TelemetryChartProps) {
             />
             <Tooltip
               labelFormatter={formatTooltipLabel}
-              formatter={(value: number | null) => formatTooltipValue(value)}
+              formatter={(value) => formatTooltipValue(value)}
             />
             <Line
               type="monotone"
