@@ -33,7 +33,7 @@ export default async function Home() {
   const chartData = [...serializedReadings]
     .reverse()
     .map(({ timestampMs, voltage, current, soc }) => ({
-      timestamp: new Date(Number(timestampMs)).toISOString(),
+      timestamp: Number(timestampMs),
       voltage,
       current,
       soc,
