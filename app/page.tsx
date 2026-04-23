@@ -13,22 +13,27 @@ function formatNullable(value: number | null) {
   return value.toFixed(2);
 }
 
-function formatDate(value: Date) {
+function formatDate(value: Date | string | number) {
   return new Date(value).toLocaleString();
+}
+
+function formatTimestampMs(value: bigint | number | string) {
+  return new Date(Number(value)).toLocaleString();
 }
 
 export default async function Home() {
   const readings = await prisma.telemetryReading.findMany({
-    orderBy: { receivedAt: "desc" },
+    orderBy: { timestampMs: "desc" },
     take: HISTORY_LIMIT,
   });
 
   const serializedReadings = serializeReadings(readings);
   const latest = serializedReadings[0] ?? null;
+
   const chartData = [...serializedReadings]
     .reverse()
-    .map(({ receivedAt, voltage, current, soc }) => ({
-      receivedAt: new Date(receivedAt).toISOString(),
+    .map(({ timestampMs, voltage, current, soc }) => ({
+      timestamp: new Date(Number(timestampMs)).toISOString(),
       voltage,
       current,
       soc,
@@ -63,7 +68,7 @@ export default async function Home() {
             <div><span className="font-medium">Power:</span> {formatNullable(latest.power)}</div>
             <div><span className="font-medium">Aux voltage:</span> {formatNullable(latest.auxVoltage)}</div>
             <div><span className="font-medium">TTG days:</span> {formatNullable(latest.ttgDays)}</div>
-            <div><span className="font-medium">Received:</span> {formatDate(latest.receivedAt)}</div>
+            <div><span className="font-medium">Sample time:</span> {formatTimestampMs(latest.timestampMs)}</div>
           </div>
         )}
       </section>
@@ -82,7 +87,7 @@ export default async function Home() {
             <table className="min-w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-                  <th className="px-2 py-2">receivedAt</th>
+                  <th className="px-2 py-2">sampleTime</th>
                   <th className="px-2 py-2">deviceId</th>
                   <th className="px-2 py-2">voltage</th>
                   <th className="px-2 py-2">current</th>
@@ -91,6 +96,7 @@ export default async function Home() {
                   <th className="px-2 py-2">auxVoltage</th>
                   <th className="px-2 py-2">ttgDays</th>
                   <th className="px-2 py-2">timestampMs</th>
+                  <th className="px-2 py-2">receivedAt</th>
                 </tr>
               </thead>
               <tbody>
@@ -99,7 +105,9 @@ export default async function Home() {
                     key={reading.id}
                     className="border-b border-zinc-100 align-top dark:border-zinc-900"
                   >
-                    <td className="px-2 py-2 whitespace-nowrap">{formatDate(reading.receivedAt)}</td>
+                    <td className="px-2 py-2 whitespace-nowrap">
+                      {formatTimestampMs(reading.timestampMs)}
+                    </td>
                     <td className="px-2 py-2 whitespace-nowrap">{reading.deviceId}</td>
                     <td className="px-2 py-2">{formatNullable(reading.voltage)}</td>
                     <td className="px-2 py-2">{formatNullable(reading.current)}</td>
@@ -108,6 +116,7 @@ export default async function Home() {
                     <td className="px-2 py-2">{formatNullable(reading.auxVoltage)}</td>
                     <td className="px-2 py-2">{formatNullable(reading.ttgDays)}</td>
                     <td className="px-2 py-2 whitespace-nowrap">{reading.timestampMs}</td>
+                    <td className="px-2 py-2 whitespace-nowrap">{formatDate(reading.receivedAt)}</td>
                   </tr>
                 ))}
               </tbody>

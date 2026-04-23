@@ -12,7 +12,7 @@ import {
 } from "recharts";
 
 type TelemetryChartPoint = {
-  receivedAt: string;
+  receivedAt?: string;
   voltage: number | null;
   current: number | null;
   soc: number | null;
