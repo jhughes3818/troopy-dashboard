@@ -1,3 +1,12 @@
+import {
+  Battery,
+  Zap,
+  Activity,
+  Clock,
+  Gauge,
+  Power,
+} from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { serializeReadings } from "@/lib/telemetry";
 import { AutoRefresh } from "@/app/components/auto-refresh";
@@ -8,17 +17,69 @@ const HISTORY_LIMIT = 5000;
 
 export const dynamic = "force-dynamic";
 
-function formatNullable(value: number | null) {
+function getSocTextColor(soc: number | null) {
+  if (soc === null) return "text-zinc-400";
+  if (soc >= 80) return "text-emerald-500";
+  if (soc >= 50) return "text-amber-500";
+  if (soc >= 20) return "text-orange-500";
+  return "text-red-500";
+}
+
+function getSocBarColor(soc: number | null) {
+  if (soc === null) return "bg-zinc-600";
+  if (soc >= 80) return "bg-emerald-500";
+  if (soc >= 50) return "bg-amber-500";
+  if (soc >= 20) return "bg-orange-500";
+  return "bg-red-500";
+}
+
+function formatNullable(value: number | null, digits = 2) {
   if (value === null) return "-";
-  return value.toFixed(2);
+  return value.toFixed(digits);
 }
 
-function formatDate(value: Date | string | number) {
-  return new Date(value).toLocaleString();
+function formatSampleTime(value: bigint | number | string | null) {
+  if (value === null) return "-";
+  const date = new Date(Number(value));
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
-function formatTimestampMs(value: bigint | number | string) {
-  return new Date(Number(value)).toLocaleString();
+function formatSampleDate(value: bigint | number | string | null) {
+  if (value === null) return "-";
+  const date = new Date(Number(value));
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatHeaderDateTime(value: bigint | number | string | null) {
+  if (value === null) return { time: "-", date: "-" };
+  return {
+    time: formatSampleTime(value),
+    date: formatSampleDate(value),
+  };
+}
+
+function formatTTG(days: number | null) {
+  if (days === null) return "-";
+  if (days <= 0) return "Charging";
+
+  const totalHours = days * 24;
+  const hours = Math.floor(totalHours);
+  const minutes = Math.round((totalHours - hours) * 60);
+
+  if (hours >= 24) {
+    const d = Math.floor(hours / 24);
+    const h = hours % 24;
+    return `${d}d ${h}h`;
+  }
+
+  return `${hours}h ${minutes}m`;
 }
 
 export default async function Home() {
@@ -32,98 +93,218 @@ export default async function Home() {
 
   const chartData = [...serializedReadings]
     .reverse()
-    .map(({ timestampMs, voltage, current, soc }) => ({
-      timestampMs: Number(timestampMs),
-      voltage,
-      current,
-      soc,
+    .map((reading) => ({
+      timestampMs: Number(reading.timestampMs),
+      voltage: reading.voltage,
+      current: reading.current,
+      soc: reading.soc,
+      power: reading.power,
+      auxVoltage: reading.auxVoltage,
+      ttgDays: reading.ttgDays,
     }));
 
+  const sampleTimestamp = latest ? latest.timestampMs : null;
+  const headerDateTime = formatHeaderDateTime(sampleTimestamp);
+
+  const isCharging = latest?.current !== null && latest.current > 0;
+  const isDischarging = latest?.current !== null && latest.current < 0;
+
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <AutoRefresh intervalMs={5000} />
+    <main className="min-h-screen bg-black text-white">
+      <AutoRefresh intervalMs={15000} />
 
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Victron Telemetry Dashboard</h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Refreshes every 5 seconds. Showing newest readings first.
-          </p>
-        </div>
-        {process.env.NODE_ENV === "development" ? <ClearHistoryButton /> : null}
+      <div className="mx-auto max-w-7xl p-4 md:p-6">
+        <header className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-white">
+              Battery Monitor
+            </h1>
+            <p className="mt-1 text-base text-zinc-500">
+              {latest?.deviceId ?? "troopy-smartshunt"}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm text-zinc-400">
+            <Clock className="h-4 w-4" />
+            <span>{headerDateTime.time}</span>
+            <span className="text-zinc-600">·</span>
+            <span>{headerDateTime.date}</span>
+          </div>
+        </header>
+
+        <section className="mb-4">
+          <Card className="border-zinc-800 bg-zinc-950/80 shadow-2xl">
+            <CardContent className="p-6 md:p-10">
+              <div className="flex min-h-[280px] flex-col items-center justify-center">
+                <div className="mb-3 flex items-center gap-2 text-zinc-400">
+                  <Battery className="h-5 w-5" />
+                  <span className="text-sm font-medium uppercase tracking-[0.18em]">
+                    State of Charge
+                  </span>
+                </div>
+
+                <div
+                  className={`text-7xl font-bold leading-none tabular-nums md:text-9xl ${getSocTextColor(
+                    latest?.soc ?? null
+                  )}`}
+                >
+                  {latest?.soc !== null && latest?.soc !== undefined
+                    ? latest.soc.toFixed(0)
+                    : "-"}
+                  <span className="text-4xl md:text-6xl">%</span>
+                </div>
+
+                <div className="mt-6 h-4 w-full max-w-md overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className={`h-full transition-all duration-500 ${getSocBarColor(
+                      latest?.soc ?? null
+                    )}`}
+                    style={{
+                      width: `${Math.max(
+                        0,
+                        Math.min(latest?.soc ?? 0, 100)
+                      )}%`,
+                    }}
+                  />
+                </div>
+
+                <div className="mt-5 flex items-center gap-2">
+                  {isCharging && (
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-400">
+                      <Zap className="h-4 w-4" />
+                      Charging
+                    </span>
+                  )}
+
+                  {isDischarging && (
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-amber-400">
+                      <Activity className="h-4 w-4" />
+                      Discharging
+                    </span>
+                  )}
+
+                  {!isCharging && !isDischarging && (
+                    <span className="text-sm font-medium text-zinc-500">
+                      Idle
+                    </span>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Card className="border-zinc-800 bg-zinc-950/80">
+            <CardContent className="p-6">
+              <div className="mb-2 flex items-center gap-2 text-zinc-400">
+                <Gauge className="h-4 w-4" />
+                <span className="text-xs font-medium uppercase tracking-[0.18em]">
+                  Voltage
+                </span>
+              </div>
+
+              <div className="text-4xl font-bold tabular-nums text-sky-400 md:text-5xl">
+                {formatNullable(latest?.voltage ?? null)}
+                <span className="ml-2 text-2xl text-zinc-500">V</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-zinc-800 bg-zinc-950/80">
+            <CardContent className="p-6">
+              <div className="mb-2 flex items-center gap-2 text-zinc-400">
+                <Zap className="h-4 w-4" />
+                <span className="text-xs font-medium uppercase tracking-[0.18em]">
+                  Current
+                </span>
+              </div>
+
+              <div
+                className={`text-4xl font-bold tabular-nums md:text-5xl ${
+                  (latest?.current ?? 0) >= 0
+                    ? "text-emerald-400"
+                    : "text-amber-400"
+                }`}
+              >
+                {latest?.current !== null && latest?.current !== undefined
+                  ? `${latest.current >= 0 ? "+" : ""}${latest.current.toFixed(2)}`
+                  : "-"}
+                <span className="ml-2 text-2xl text-zinc-500">A</span>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <Card className="border-zinc-800 bg-zinc-950/50">
+            <CardContent className="p-6">
+              <div className="mb-2 flex items-center gap-2 text-zinc-500">
+                <Power className="h-4 w-4" />
+                <span className="text-xs font-medium uppercase tracking-[0.18em]">
+                  Power
+                </span>
+              </div>
+
+              <div className="text-2xl font-semibold tabular-nums text-zinc-300 md:text-3xl">
+                {formatNullable(latest?.power ?? null, 1)}
+                <span className="ml-2 text-base text-zinc-500">W</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-zinc-800 bg-zinc-950/50">
+            <CardContent className="p-6">
+              <div className="mb-2 flex items-center gap-2 text-zinc-500">
+                <Clock className="h-4 w-4" />
+                <span className="text-xs font-medium uppercase tracking-[0.18em]">
+                  Time to Go
+                </span>
+              </div>
+
+              <div className="text-2xl font-semibold tabular-nums text-zinc-300 md:text-3xl">
+                {formatTTG(latest?.ttgDays ?? null)}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-zinc-800 bg-zinc-950/50">
+            <CardContent className="p-6">
+              <div className="mb-2 flex items-center gap-2 text-zinc-500">
+                <Clock className="h-4 w-4" />
+                <span className="text-xs font-medium uppercase tracking-[0.18em]">
+                  Sample Time
+                </span>
+              </div>
+
+              <div className="text-2xl font-semibold tabular-nums text-zinc-300 md:text-3xl">
+                {formatSampleTime(sampleTimestamp)}
+              </div>
+              <div className="mt-1 text-sm text-zinc-500">
+                {formatSampleDate(sampleTimestamp)}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="space-y-4">
+          <Card className="border-zinc-800 bg-zinc-950/60">
+            <CardContent className="p-4 md:p-6">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">History</h2>
+                  <p className="text-sm text-zinc-500">
+                    Recent telemetry using sample timestamps
+                  </p>
+                </div>
+                <ClearHistoryButton />
+              </div>
+
+              <TelemetryChart data={chartData} />
+            </CardContent>
+          </Card>
+        </section>
       </div>
-
-      <section className="mb-8 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="mb-4 text-lg font-medium">Latest reading</h2>
-        {!latest ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            No telemetry yet. Post data to <code>/api/victron</code> to get started.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <div><span className="font-medium">Device:</span> {latest.deviceId}</div>
-            <div><span className="font-medium">Voltage:</span> {formatNullable(latest.voltage)}</div>
-            <div><span className="font-medium">Current:</span> {formatNullable(latest.current)}</div>
-            <div><span className="font-medium">SOC:</span> {formatNullable(latest.soc)}</div>
-            <div><span className="font-medium">Power:</span> {formatNullable(latest.power)}</div>
-            <div><span className="font-medium">Aux voltage:</span> {formatNullable(latest.auxVoltage)}</div>
-            <div><span className="font-medium">TTG days:</span> {formatNullable(latest.ttgDays)}</div>
-            <div><span className="font-medium">Sample time:</span> {formatTimestampMs(latest.timestampMs)}</div>
-          </div>
-        )}
-      </section>
-
-      <section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="mb-4 text-lg font-medium">Telemetry chart</h2>
-        <TelemetryChart data={chartData} />
-      </section>
-
-      <section className="mt-8 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="mb-4 text-lg font-medium">History</h2>
-        {serializedReadings.length === 0 ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">No historical readings yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-                  <th className="px-2 py-2">sampleTime</th>
-                  <th className="px-2 py-2">deviceId</th>
-                  <th className="px-2 py-2">voltage</th>
-                  <th className="px-2 py-2">current</th>
-                  <th className="px-2 py-2">soc</th>
-                  <th className="px-2 py-2">power</th>
-                  <th className="px-2 py-2">auxVoltage</th>
-                  <th className="px-2 py-2">ttgDays</th>
-                  <th className="px-2 py-2">timestampMs</th>
-                  <th className="px-2 py-2">receivedAt</th>
-                </tr>
-              </thead>
-              <tbody>
-                {serializedReadings.map((reading) => (
-                  <tr
-                    key={reading.id}
-                    className="border-b border-zinc-100 align-top dark:border-zinc-900"
-                  >
-                    <td className="px-2 py-2 whitespace-nowrap">
-                      {formatTimestampMs(reading.timestampMs)}
-                    </td>
-                    <td className="px-2 py-2 whitespace-nowrap">{reading.deviceId}</td>
-                    <td className="px-2 py-2">{formatNullable(reading.voltage)}</td>
-                    <td className="px-2 py-2">{formatNullable(reading.current)}</td>
-                    <td className="px-2 py-2">{formatNullable(reading.soc)}</td>
-                    <td className="px-2 py-2">{formatNullable(reading.power)}</td>
-                    <td className="px-2 py-2">{formatNullable(reading.auxVoltage)}</td>
-                    <td className="px-2 py-2">{formatNullable(reading.ttgDays)}</td>
-                    <td className="px-2 py-2 whitespace-nowrap">{reading.timestampMs}</td>
-                    <td className="px-2 py-2 whitespace-nowrap">{formatDate(reading.receivedAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
     </main>
   );
 }
