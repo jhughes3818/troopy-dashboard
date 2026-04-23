@@ -4,7 +4,7 @@ import { AutoRefresh } from "@/app/components/auto-refresh";
 import { TelemetryChart } from "@/app/components/telemetry-chart";
 import { ClearHistoryButton } from "@/app/components/clear-history-button";
 
-const HISTORY_LIMIT = 100;
+const HISTORY_LIMIT = 5000;
 
 export const dynamic = "force-dynamic";
 

@@ -8,8 +8,8 @@ import {
   serializeReading,
 } from "@/lib/telemetry";
 
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 500;
+const DEFAULT_LIMIT = 500;
+const MAX_LIMIT = 5000;
 export const dynamic = "force-dynamic";
 
 type InsertTelemetryData = {
@@ -111,7 +111,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Batch mode
   if (typeof body === "object" && body !== null && "records" in body) {
     const parsedBatch = parseBatchTelemetryPayload(body);
 
@@ -156,7 +155,6 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Single mode
   const parsedSingle = parseTelemetryPayload(body);
   if (!parsedSingle.ok) {
     return NextResponse.json(
@@ -176,24 +174,13 @@ export async function POST(request: NextRequest) {
   const accepted = result.count;
   const duplicates = accepted === 0 ? 1 : 0;
 
-  let reading = null;
-  if (accepted === 1) {
-    reading = await prisma.telemetryReading.findFirst({
-      where: {
-        deviceId: data.deviceId,
-        timestampMs: data.timestampMs,
-      },
-      orderBy: { receivedAt: "desc" },
-    });
-  } else {
-    reading = await prisma.telemetryReading.findFirst({
-      where: {
-        deviceId: data.deviceId,
-        timestampMs: data.timestampMs,
-      },
-      orderBy: { receivedAt: "desc" },
-    });
-  }
+  const reading = await prisma.telemetryReading.findFirst({
+    where: {
+      deviceId: data.deviceId,
+      timestampMs: data.timestampMs,
+    },
+    orderBy: { timestampMs: "desc" },
+  });
 
   return NextResponse.json({
     ok: true,
@@ -210,7 +197,7 @@ export async function GET(request: NextRequest) {
   const limit = getLimitFromQuery(request);
 
   const readings = await prisma.telemetryReading.findMany({
-    orderBy: { receivedAt: "desc" },
+    orderBy: { timestampMs: "desc" },
     take: limit,
   });
 
