@@ -12,6 +12,7 @@ import { serializeReadings } from "@/lib/telemetry";
 import { AutoRefresh } from "@/app/components/auto-refresh";
 import { TelemetryChart } from "@/app/components/telemetry-chart";
 import { ClearHistoryButton } from "@/app/components/clear-history-button";
+import { BatteryChart } from "./components/battery-chart";
 
 const HISTORY_LIMIT = 5000;
 
@@ -19,10 +20,10 @@ export const dynamic = "force-dynamic";
 
 function getSocTextColor(soc: number | null) {
   if (soc === null) return "text-zinc-400";
-  if (soc >= 80) return "text-emerald-500";
-  if (soc >= 50) return "text-amber-500";
-  if (soc >= 20) return "text-orange-500";
-  return "text-red-500";
+  if (soc >= 80) return "text-emerald-400";
+  if (soc >= 50) return "text-amber-400";
+  if (soc >= 20) return "text-orange-400";
+  return "text-red-400";
 }
 
 function getSocBarColor(soc: number | null) {
@@ -82,6 +83,12 @@ function formatTTG(days: number | null) {
   return `${hours}h ${minutes}m`;
 }
 
+const primaryCardClassName =
+  "rounded-[28px] border border-zinc-800/70 bg-zinc-900/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] backdrop-blur-sm";
+
+const secondaryCardClassName =
+  "rounded-[28px] border border-zinc-800/60 bg-zinc-900/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-sm";
+
 export default async function Home() {
   const readings = await prisma.telemetryReading.findMany({
     orderBy: { timestampMs: "desc" },
@@ -110,7 +117,7 @@ export default async function Home() {
   const isDischarging = latest?.current !== null && latest.current < 0;
 
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-zinc-950 text-white">
       <AutoRefresh intervalMs={15000} />
 
       <div className="mx-auto max-w-7xl p-4 md:p-6">
@@ -124,27 +131,27 @@ export default async function Home() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 text-sm text-zinc-400">
+          <div className="flex items-center gap-2 text-sm text-zinc-500">
             <Clock className="h-4 w-4" />
             <span>{headerDateTime.time}</span>
-            <span className="text-zinc-600">·</span>
+            <span className="text-zinc-700">·</span>
             <span>{headerDateTime.date}</span>
           </div>
         </header>
 
         <section className="mb-4">
-          <Card className="border-zinc-800 bg-zinc-950/80 shadow-2xl">
-            <CardContent className="p-6 md:p-10">
+          <Card className={primaryCardClassName}>
+            <CardContent className="p-6 md:p-8">
               <div className="flex min-h-[280px] flex-col items-center justify-center">
-                <div className="mb-3 flex items-center gap-2 text-zinc-400">
+                <div className="mb-4 flex items-center gap-2 text-zinc-500">
                   <Battery className="h-5 w-5" />
-                  <span className="text-sm font-medium uppercase tracking-[0.18em]">
+                  <span className="text-sm font-medium uppercase tracking-[0.16em]">
                     State of Charge
                   </span>
                 </div>
 
                 <div
-                  className={`text-7xl font-bold leading-none tabular-nums md:text-9xl ${getSocTextColor(
+                  className={`text-7xl font-semibold leading-none tracking-tight tabular-nums md:text-9xl ${getSocTextColor(
                     latest?.soc ?? null
                   )}`}
                 >
@@ -154,9 +161,9 @@ export default async function Home() {
                   <span className="text-4xl md:text-6xl">%</span>
                 </div>
 
-                <div className="mt-6 h-4 w-full max-w-md overflow-hidden rounded-full bg-zinc-800">
+                <div className="mt-8 h-3 w-full max-w-md overflow-hidden rounded-full bg-zinc-800">
                   <div
-                    className={`h-full transition-all duration-500 ${getSocBarColor(
+                    className={`h-full rounded-full transition-all duration-500 ${getSocBarColor(
                       latest?.soc ?? null
                     )}`}
                     style={{
@@ -168,7 +175,7 @@ export default async function Home() {
                   />
                 </div>
 
-                <div className="mt-5 flex items-center gap-2">
+                <div className="mt-6 flex items-center gap-2">
                   {isCharging && (
                     <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-400">
                       <Zap className="h-4 w-4" />
@@ -195,33 +202,33 @@ export default async function Home() {
         </section>
 
         <section className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Card className="border-zinc-800 bg-zinc-950/80">
-            <CardContent className="p-6">
-              <div className="mb-2 flex items-center gap-2 text-zinc-400">
+          <Card className={primaryCardClassName}>
+            <CardContent className="p-6 md:p-8">
+              <div className="mb-3 flex items-center gap-2 text-zinc-500">
                 <Gauge className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-[0.18em]">
+                <span className="text-xs font-medium uppercase tracking-[0.16em]">
                   Voltage
                 </span>
               </div>
 
-              <div className="text-4xl font-bold tabular-nums text-sky-400 md:text-5xl">
+              <div className="text-4xl font-semibold tracking-tight tabular-nums text-sky-400 md:text-5xl">
                 {formatNullable(latest?.voltage ?? null)}
                 <span className="ml-2 text-2xl text-zinc-500">V</span>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-zinc-800 bg-zinc-950/80">
-            <CardContent className="p-6">
-              <div className="mb-2 flex items-center gap-2 text-zinc-400">
+          <Card className={primaryCardClassName}>
+            <CardContent className="p-6 md:p-8">
+              <div className="mb-3 flex items-center gap-2 text-zinc-500">
                 <Zap className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-[0.18em]">
+                <span className="text-xs font-medium uppercase tracking-[0.16em]">
                   Current
                 </span>
               </div>
 
               <div
-                className={`text-4xl font-bold tabular-nums md:text-5xl ${
+                className={`text-4xl font-semibold tracking-tight tabular-nums md:text-5xl ${
                   (latest?.current ?? 0) >= 0
                     ? "text-emerald-400"
                     : "text-amber-400"
@@ -237,47 +244,47 @@ export default async function Home() {
         </section>
 
         <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Card className="border-zinc-800 bg-zinc-950/50">
-            <CardContent className="p-6">
-              <div className="mb-2 flex items-center gap-2 text-zinc-500">
+          <Card className={secondaryCardClassName}>
+            <CardContent className="p-6 md:p-8">
+              <div className="mb-3 flex items-center gap-2 text-zinc-500">
                 <Power className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-[0.18em]">
+                <span className="text-xs font-medium uppercase tracking-[0.16em]">
                   Power
                 </span>
               </div>
 
-              <div className="text-2xl font-semibold tabular-nums text-zinc-300 md:text-3xl">
+              <div className="text-2xl font-semibold tracking-tight tabular-nums text-zinc-200 md:text-3xl">
                 {formatNullable(latest?.power ?? null, 1)}
                 <span className="ml-2 text-base text-zinc-500">W</span>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-zinc-800 bg-zinc-950/50">
-            <CardContent className="p-6">
-              <div className="mb-2 flex items-center gap-2 text-zinc-500">
+          <Card className={secondaryCardClassName}>
+            <CardContent className="p-6 md:p-8">
+              <div className="mb-3 flex items-center gap-2 text-zinc-500">
                 <Clock className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-[0.18em]">
+                <span className="text-xs font-medium uppercase tracking-[0.16em]">
                   Time to Go
                 </span>
               </div>
 
-              <div className="text-2xl font-semibold tabular-nums text-zinc-300 md:text-3xl">
+              <div className="text-2xl font-semibold tracking-tight tabular-nums text-zinc-200 md:text-3xl">
                 {formatTTG(latest?.ttgDays ?? null)}
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-zinc-800 bg-zinc-950/50">
-            <CardContent className="p-6">
-              <div className="mb-2 flex items-center gap-2 text-zinc-500">
+          <Card className={secondaryCardClassName}>
+            <CardContent className="p-6 md:p-8">
+              <div className="mb-3 flex items-center gap-2 text-zinc-500">
                 <Clock className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-[0.18em]">
+                <span className="text-xs font-medium uppercase tracking-[0.16em]">
                   Sample Time
                 </span>
               </div>
 
-              <div className="text-2xl font-semibold tabular-nums text-zinc-300 md:text-3xl">
+              <div className="text-2xl font-semibold tracking-tight tabular-nums text-zinc-200 md:text-3xl">
                 {formatSampleTime(sampleTimestamp)}
               </div>
               <div className="mt-1 text-sm text-zinc-500">
@@ -288,19 +295,12 @@ export default async function Home() {
         </section>
 
         <section className="space-y-4">
-          <Card className="border-zinc-800 bg-zinc-950/60">
-            <CardContent className="p-4 md:p-6">
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-white">History</h2>
-                  <p className="text-sm text-zinc-500">
-                    Recent telemetry using sample timestamps
-                  </p>
-                </div>
-                <ClearHistoryButton />
-              </div>
+          <Card className={secondaryCardClassName}>
+            <CardContent className="">
+             
 
-              <TelemetryChart data={chartData} />
+              {/* <TelemetryChart data={chartData} /> */}
+              <BatteryChart data={serializedReadings} />
             </CardContent>
           </Card>
         </section>
