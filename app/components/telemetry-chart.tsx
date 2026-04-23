@@ -12,7 +12,7 @@ import {
 } from "recharts";
 
 type TelemetryChartPoint = {
-  timestampMs?: number;
+  timestampMs?: number | string;
   voltage: number | null;
   current: number | null;
   soc: number | null;
@@ -37,6 +37,19 @@ const RANGES = {
 type MetricKey = keyof typeof METRICS;
 type RangeKey = keyof typeof RANGES;
 
+function toTimestamp(value: number | string | undefined): number | null {
+  if (typeof value === "number") {
+    return Number.isNaN(value) ? null : value;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
+}
+
 function formatTick(value: number, range: RangeKey) {
   const date = new Date(value);
 
@@ -58,6 +71,13 @@ function formatTooltipLabel(label: unknown) {
     return new Date(label).toLocaleString();
   }
 
+  if (typeof label === "string" && label.trim() !== "") {
+    const parsed = Number(label);
+    if (!Number.isNaN(parsed)) {
+      return new Date(parsed).toLocaleString();
+    }
+  }
+
   return String(label ?? "");
 }
 
@@ -73,35 +93,45 @@ export function TelemetryChart({ data }: TelemetryChartProps) {
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>("voltage");
   const [selectedRange, setSelectedRange] = useState<RangeKey>("24h");
 
-  const sortedData = useMemo(() => {
-    return [...data].sort((a, b) => (a.timestampMs ?? 0) - (b.timestampMs ?? 0));
+  const normalizedData = useMemo(() => {
+    return data
+      .map((point) => {
+        const timestamp = toTimestamp(point.timestampMs);
+
+        return {
+          ...point,
+          timestampMs: timestamp,
+        };
+      })
+      .filter((point) => point.timestampMs !== null)
+      .sort((a, b) => (a.timestampMs as number) - (b.timestampMs as number));
   }, [data]);
 
   const filteredData = useMemo(() => {
-    if (sortedData.length === 0) return [];
+    if (normalizedData.length === 0) return [];
 
-    const timestamps = sortedData
-      .map((point) => point.timestampMs)
-      .filter((value): value is number => typeof value === "number" && !Number.isNaN(value));
+    const latestTimestamp = normalizedData[normalizedData.length - 1]?.timestampMs;
+    if (typeof latestTimestamp !== "number") return [];
 
-    if (timestamps.length === 0) return sortedData;
-
-    const latestTimestamp = Math.max(...timestamps);
     const cutoff = latestTimestamp - RANGES[selectedRange].ms;
 
-    return sortedData.filter((point) => {
-      if (typeof point.timestampMs !== "number" || Number.isNaN(point.timestampMs)) {
-        return false;
-      }
-
-      return point.timestampMs >= cutoff;
+    return normalizedData.filter((point) => {
+      return typeof point.timestampMs === "number" && point.timestampMs >= cutoff;
     });
-  }, [sortedData, selectedRange]);
+  }, [normalizedData, selectedRange]);
 
   if (data.length === 0) {
     return (
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
         No historical readings yet.
+      </p>
+    );
+  }
+
+  if (normalizedData.length === 0) {
+    return (
+      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        Historical readings were loaded, but none have a valid timestamp.
       </p>
     );
   }
