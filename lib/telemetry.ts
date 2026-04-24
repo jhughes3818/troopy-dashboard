@@ -158,6 +158,8 @@ type ReadingWithBigInt = {
 export function serializeReading(reading: ReadingWithBigInt) {
   return {
     ...reading,
+    insideTemperature: reading.insideTempC,
+    outsideTemperature: reading.outsideTempC,
     timestampMs: Number(reading.timestampMs),
   };
 }

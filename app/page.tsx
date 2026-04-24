@@ -5,6 +5,7 @@ import {
   Clock,
   Gauge,
   Power,
+  Thermometer,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
@@ -37,6 +38,11 @@ function getSocBarColor(soc: number | null) {
 function formatNullable(value: number | null, digits = 2) {
   if (value === null) return "-";
   return value.toFixed(digits);
+}
+
+function formatTemperature(value: number | null) {
+  if (value === null) return "-";
+  return value.toFixed(1);
 }
 
 function formatSampleTime(value: bigint | number | string | null) {
@@ -112,6 +118,8 @@ export default async function Home() {
 
   const sampleTimestamp = latest ? latest.timestampMs : null;
   const headerDateTime = formatHeaderDateTime(sampleTimestamp);
+  const latestInsideTemperature = latest?.insideTemperature ?? null;
+  const latestOutsideTemperature = latest?.outsideTemperature ?? null;
 
   const isCharging = latest?.current !== null && latest.current > 0;
   const isDischarging = latest?.current !== null && latest.current < 0;
@@ -243,7 +251,7 @@ export default async function Home() {
           </Card>
         </section>
 
-        <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
           <Card className={secondaryCardClassName}>
             <CardContent className="p-6 md:p-8">
               <div className="mb-3 flex items-center gap-2 text-zinc-500">
@@ -271,6 +279,39 @@ export default async function Home() {
 
               <div className="text-2xl font-semibold tracking-tight tabular-nums text-zinc-200 md:text-3xl">
                 {formatTTG(latest?.ttgDays ?? null)}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className={secondaryCardClassName}>
+            <CardContent className="p-6 md:p-8">
+              <div className="mb-3 flex items-center gap-2 text-zinc-500">
+                <Thermometer className="h-4 w-4" />
+                <span className="text-xs font-medium uppercase tracking-[0.16em]">
+                  Temperature
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-600">
+                    Inside
+                  </div>
+                  <div className="mt-1 text-2xl font-semibold tracking-tight tabular-nums text-zinc-200 md:text-3xl">
+                    {formatTemperature(latestInsideTemperature)}
+                    <span className="ml-1 text-base text-zinc-500">°C</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-600">
+                    Outside
+                  </div>
+                  <div className="mt-1 text-2xl font-semibold tracking-tight tabular-nums text-zinc-200 md:text-3xl">
+                    {formatTemperature(latestOutsideTemperature)}
+                    <span className="ml-1 text-base text-zinc-500">°C</span>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
