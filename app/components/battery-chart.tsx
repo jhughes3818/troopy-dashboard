@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   CartesianGrid,
   Line,
@@ -13,7 +19,7 @@ import {
   YAxis,
 } from "recharts"
 
-type TimeRange = "1h" | "24h" | "1w"
+type TimeRange = "1h" | "3h" | "6h" | "12h" | "24h" | "1w"
 type Metric = "voltage" | "current" | "soc" | "insideTemperature" | "outsideTemperature"
 
 type TelemetryReading = {
@@ -55,6 +61,12 @@ function getRangeStart(range: TimeRange): number {
   switch (range) {
     case "1h":
       return now - 60 * 60 * 1000
+    case "3h":
+      return now - 3 * 60 * 60 * 1000
+    case "6h":
+      return now - 6 * 60 * 60 * 1000
+    case "12h":
+      return now - 12 * 60 * 60 * 1000
     case "24h":
       return now - 24 * 60 * 60 * 1000
     case "1w":
@@ -65,7 +77,9 @@ function getRangeStart(range: TimeRange): number {
 function formatXAxis(date: Date, range: TimeRange): string {
   switch (range) {
     case "1h":
-      return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    case "3h":
+    case "6h":
+    case "12h":
     case "24h":
       return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     case "1w":
@@ -143,6 +157,15 @@ export function BatteryChart({ data }: BatteryChartProps) {
     },
   } as const
 
+  const timeRangeOptions: Array<{ value: TimeRange; label: string }> = [
+    { value: "1h", label: "1 hour" },
+    { value: "3h", label: "3 hours" },
+    { value: "6h", label: "6 hours" },
+    { value: "12h", label: "12 hours" },
+    { value: "24h", label: "24 hours" },
+    { value: "1w", label: "1 week" },
+  ]
+
   const chartData = useMemo<ChartPoint[]>(() => {
     const rangeStart = getRangeStart(timeRange)
 
@@ -179,31 +202,21 @@ export function BatteryChart({ data }: BatteryChartProps) {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-lg font-semibold text-white">History</CardTitle>
 
-          <ToggleGroup
-            type="single"
+          <Select
             value={timeRange}
-            onValueChange={(value) => value && setTimeRange(value as TimeRange)}
-            className="rounded-lg bg-zinc-800 p-1"
+            onValueChange={(value) => setTimeRange(value as TimeRange)}
           >
-            <ToggleGroupItem
-              value="1h"
-              className="rounded-md px-4 py-1.5 text-sm text-zinc-400 data-[state=on]:bg-zinc-700 data-[state=on]:text-white"
-            >
-              1H
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="24h"
-              className="rounded-md px-4 py-1.5 text-sm text-zinc-400 data-[state=on]:bg-zinc-700 data-[state=on]:text-white"
-            >
-              24H
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="1w"
-              className="rounded-md px-4 py-1.5 text-sm text-zinc-400 data-[state=on]:bg-zinc-700 data-[state=on]:text-white"
-            >
-              1W
-            </ToggleGroupItem>
-          </ToggleGroup>
+            <SelectTrigger className="w-full border-zinc-700 bg-zinc-800 text-white sm:w-[140px]">
+              <SelectValue placeholder="Time range" />
+            </SelectTrigger>
+            <SelectContent className="border-zinc-700 bg-zinc-900 text-white">
+              {timeRangeOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
