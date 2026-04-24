@@ -14,7 +14,7 @@ import {
 } from "recharts"
 
 type TimeRange = "1h" | "24h" | "1w"
-type Metric = "voltage" | "current" | "soc"
+type Metric = "voltage" | "current" | "soc" | "insideTemperature" | "outsideTemperature"
 
 type TelemetryReading = {
   timestampMs: number | string | bigint
@@ -24,6 +24,10 @@ type TelemetryReading = {
   power?: number | null
   auxVoltage?: number | null
   ttgDays?: number | null
+  insideTemperature?: number | null
+  outsideTemperature?: number | null
+  insideTempC?: number | null
+  outsideTempC?: number | null
 }
 
 type ChartPoint = {
@@ -31,6 +35,8 @@ type ChartPoint = {
   voltage: number | null
   current: number | null
   soc: number | null
+  insideTemperature: number | null
+  outsideTemperature: number | null
 }
 
 interface BatteryChartProps {
@@ -71,7 +77,8 @@ function formatMetricValue(metric: Metric, value: number | null | undefined) {
   if (value == null) return "-"
   if (metric === "soc") return `${value.toFixed(1)}%`
   if (metric === "voltage") return `${value.toFixed(2)}V`
-  return `${value.toFixed(2)}A`
+  if (metric === "current") return `${value.toFixed(2)}A`
+  return `${value.toFixed(1)}°C`
 }
 
 function CustomTooltip({
@@ -116,12 +123,24 @@ export function BatteryChart({ data }: BatteryChartProps) {
     "voltage",
     "current",
     "soc",
+    "insideTemperature",
+    "outsideTemperature",
   ])
 
   const metricConfig = {
     voltage: { color: "#38bdf8", label: "Voltage (V)", yAxisId: "voltage" },
     current: { color: "#a3e635", label: "Current (A)", yAxisId: "current" },
     soc: { color: "#f97316", label: "SOC (%)", yAxisId: "soc" },
+    insideTemperature: {
+      color: "#e879f9",
+      label: "Inside Temp (°C)",
+      yAxisId: "temperature",
+    },
+    outsideTemperature: {
+      color: "#facc15",
+      label: "Outside Temp (°C)",
+      yAxisId: "temperature",
+    },
   } as const
 
   const chartData = useMemo<ChartPoint[]>(() => {
@@ -133,6 +152,10 @@ export function BatteryChart({ data }: BatteryChartProps) {
         voltage: reading.voltage,
         current: reading.current,
         soc: reading.soc,
+        insideTemperature:
+          reading.insideTemperature ?? reading.insideTempC ?? null,
+        outsideTemperature:
+          reading.outsideTemperature ?? reading.outsideTempC ?? null,
       }))
       .filter((point) => Number.isFinite(point.time) && point.time >= rangeStart)
       .sort((a, b) => a.time - b.time)
@@ -282,6 +305,24 @@ export function BatteryChart({ data }: BatteryChartProps) {
                   />
                 )}
 
+                {(activeMetrics.includes("insideTemperature") ||
+                  activeMetrics.includes("outsideTemperature")) && (
+                  <YAxis
+                    yAxisId="temperature"
+                    orientation="right"
+                    domain={["auto", "auto"]}
+                    stroke="#52525b"
+                    tick={{ fill: "#e879f9", fontSize: 12 }}
+                    tickLine={{ stroke: "#52525b" }}
+                    width={50}
+                    tickFormatter={(value) => `${value}°C`}
+                    hide={
+                      activeMetrics.includes("soc") ||
+                      (activeMetrics.includes("current") && activeMetrics.includes("voltage"))
+                    }
+                  />
+                )}
+
                 <Tooltip content={<CustomTooltip />} />
 
                 {activeMetrics.includes("voltage") && (
@@ -317,6 +358,32 @@ export function BatteryChart({ data }: BatteryChartProps) {
                     dataKey="soc"
                     connectNulls={false}
                     stroke="#f97316"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4, strokeWidth: 0 }}
+                  />
+                )}
+
+                {activeMetrics.includes("insideTemperature") && (
+                  <Line
+                    yAxisId="temperature"
+                    type="monotone"
+                    dataKey="insideTemperature"
+                    connectNulls={false}
+                    stroke="#e879f9"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4, strokeWidth: 0 }}
+                  />
+                )}
+
+                {activeMetrics.includes("outsideTemperature") && (
+                  <Line
+                    yAxisId="temperature"
+                    type="monotone"
+                    dataKey="outsideTemperature"
+                    connectNulls={false}
+                    stroke="#facc15"
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4, strokeWidth: 0 }}
