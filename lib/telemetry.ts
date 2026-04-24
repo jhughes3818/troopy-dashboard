@@ -6,6 +6,8 @@ export type RawTelemetryPayload = {
   power: number | null;
   aux_voltage: number | null;
   ttg_days: number | null;
+  inside_temp_c: number | null;
+  outside_temp_c: number | null;
   timestamp_ms: number;
 };
 
@@ -36,6 +38,8 @@ const NULLABLE_NUMERIC_FIELDS = [
   "power",
   "aux_voltage",
   "ttg_days",
+  "inside_temp_c",
+  "outside_temp_c",
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -145,6 +149,8 @@ type ReadingWithBigInt = {
   power: number | null;
   auxVoltage: number | null;
   ttgDays: number | null;
+  insideTempC: number | null;
+  outsideTempC: number | null;
   timestampMs: bigint;
   receivedAt: Date;
 };

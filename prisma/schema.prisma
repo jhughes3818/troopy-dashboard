@@ -17,6 +17,8 @@ model TelemetryReading {
   power      Float?
   auxVoltage Float?
   ttgDays    Float?
+  insideTempC  Float?
+  outsideTempC Float?
   timestampMs BigInt
   receivedAt DateTime @default(now())
 

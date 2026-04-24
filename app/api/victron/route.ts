@@ -20,6 +20,8 @@ type InsertTelemetryData = {
   power: number | null;
   auxVoltage: number | null;
   ttgDays: number | null;
+  insideTempC: number | null;
+  outsideTempC: number | null;
   timestampMs: bigint;
 };
 
@@ -55,6 +57,8 @@ function mapRecordToInsertData(record: {
   power: number | null;
   aux_voltage: number | null;
   ttg_days: number | null;
+  inside_temp_c?: number | null;
+  outside_temp_c?: number | null;
   timestamp_ms: number;
 }): InsertTelemetryData {
   return {
@@ -65,6 +69,8 @@ function mapRecordToInsertData(record: {
     power: record.power,
     auxVoltage: record.aux_voltage,
     ttgDays: record.ttg_days,
+    insideTempC: record.inside_temp_c ?? null,
+    outsideTempC: record.outside_temp_c ?? null,
     timestampMs: BigInt(record.timestamp_ms),
   };
 }
