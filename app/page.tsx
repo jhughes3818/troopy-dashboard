@@ -1,3 +1,5 @@
+
+
 import {
   Battery,
   Zap,
@@ -14,6 +16,7 @@ import { AutoRefresh } from "@/app/components/auto-refresh";
 import { TelemetryChart } from "@/app/components/telemetry-chart";
 import { ClearHistoryButton } from "@/app/components/clear-history-button";
 import { BatteryChart } from "./components/battery-chart";
+import { LocalSampleTime } from "./components/local-sample-time";
 
 const HISTORY_LIMIT = 5000;
 
@@ -325,12 +328,9 @@ export default async function Home() {
                 </span>
               </div>
 
-              <div className="text-2xl font-semibold tracking-tight tabular-nums text-zinc-200 md:text-3xl">
-                {formatSampleTime(sampleTimestamp)}
-              </div>
-              <div className="mt-1 text-sm text-zinc-500">
-                {formatSampleDate(sampleTimestamp)}
-              </div>
+              <LocalSampleTime
+  timestampMs={sampleTimestamp === null ? null : Number(sampleTimestamp)}
+/>
             </CardContent>
           </Card>
         </section>
