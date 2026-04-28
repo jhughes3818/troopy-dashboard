@@ -8,6 +8,15 @@ export type RawTelemetryPayload = {
   ttg_days: number | null;
   inside_temp_c: number | null;
   outside_temp_c: number | null;
+  gps_valid: boolean | null;
+  gps_latitude: number | null;
+  gps_longitude: number | null;
+  gps_altitude_m: number | null;
+  gps_speed_kmph: number | null;
+  gps_course_deg: number | null;
+  gps_satellites: number | null;
+  gps_hdop: number | null;
+  gps_fix_age_ms: number | null;
   timestamp_ms: number;
 };
 
@@ -40,6 +49,14 @@ const NULLABLE_NUMERIC_FIELDS = [
   "ttg_days",
   "inside_temp_c",
   "outside_temp_c",
+  "gps_latitude",
+  "gps_longitude",
+  "gps_altitude_m",
+  "gps_speed_kmph",
+  "gps_course_deg",
+  "gps_satellites",
+  "gps_hdop",
+  "gps_fix_age_ms",
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -77,6 +94,15 @@ export function parseTelemetryPayload(body: unknown): ParseTelemetryResult {
     parsedFields[field] = parsed;
   }
 
+  let gpsValid: boolean | null;
+  if (body.gps_valid === null) {
+    gpsValid = null;
+  } else if (typeof body.gps_valid === "boolean") {
+    gpsValid = body.gps_valid;
+  } else {
+    return { ok: false, error: "gps_valid must be a boolean or null." };
+  }
+
   if (
     typeof body.timestamp_ms !== "number" ||
     !Number.isFinite(body.timestamp_ms) ||
@@ -90,6 +116,7 @@ export function parseTelemetryPayload(body: unknown): ParseTelemetryResult {
     data: {
       device_id: body.device_id.trim(),
       ...parsedFields,
+      gps_valid: gpsValid,
       timestamp_ms: body.timestamp_ms,
     },
   };
@@ -151,6 +178,15 @@ type ReadingWithBigInt = {
   ttgDays: number | null;
   insideTempC: number | null;
   outsideTempC: number | null;
+  gpsValid: boolean | null;
+  gpsLatitude: number | null;
+  gpsLongitude: number | null;
+  gpsAltitudeM: number | null;
+  gpsSpeedKmph: number | null;
+  gpsCourseDeg: number | null;
+  gpsSatellites: number | null;
+  gpsHdop: number | null;
+  gpsFixAgeMs: number | null;
   timestampMs: bigint;
   receivedAt: Date;
 };

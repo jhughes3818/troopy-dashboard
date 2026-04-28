@@ -789,26 +789,6 @@ bool flushQueuedRecords() {
     resetBackoff();
     return true;
   }
-void serviceWifiRecovery() {
-  if (authFailure) return;
-
-  unsigned long now = millis();
-
-  if (WiFi.status() == WL_CONNECTED &&
-      !internetUsable &&
-      wifiConnectedSinceMs != 0 &&
-      now - wifiConnectedSinceMs >= WIFI_MAX_CONNECTED_WITHOUT_INTERNET_MS) {
-    forceWifiReset("Wi-Fi connected too long without confirmed internet");
-    return;
-  }
-
-  if (queueHeader.count >= MIN_QUEUE_FOR_STALL_RESET &&
-      lastSuccessfulUploadMs != 0 &&
-      now - lastSuccessfulUploadMs >= UPLOAD_STALL_RESET_MS) {
-    forceWifiReset("queue growing and no successful uploads recently");
-    return;
-  }
-}
 
   if (statusCode == 401) {
     authFailure = true;
@@ -971,6 +951,27 @@ void sampleAndQueueTelemetry() {
 // ============================================================
 // SERVICES
 // ============================================================
+
+void serviceWifiRecovery() {
+  if (authFailure) return;
+
+  unsigned long now = millis();
+
+  if (WiFi.status() == WL_CONNECTED &&
+      !internetUsable &&
+      wifiConnectedSinceMs != 0 &&
+      now - wifiConnectedSinceMs >= WIFI_MAX_CONNECTED_WITHOUT_INTERNET_MS) {
+    forceWifiReset("Wi-Fi connected too long without confirmed internet");
+    return;
+  }
+
+  if (queueHeader.count >= MIN_QUEUE_FOR_STALL_RESET &&
+      lastSuccessfulUploadMs != 0 &&
+      now - lastSuccessfulUploadMs >= UPLOAD_STALL_RESET_MS) {
+    forceWifiReset("queue growing and no successful uploads recently");
+    return;
+  }
+}
 
 void serviceTimeSync() {
   if (WiFi.status() != WL_CONNECTED) return;

@@ -22,13 +22,26 @@ type InsertTelemetryData = {
   ttgDays: number | null;
   insideTempC: number | null;
   outsideTempC: number | null;
+  gpsValid: boolean | null;
+  gpsLatitude: number | null;
+  gpsLongitude: number | null;
+  gpsAltitudeM: number | null;
+  gpsSpeedKmph: number | null;
+  gpsCourseDeg: number | null;
+  gpsSatellites: number | null;
+  gpsHdop: number | null;
+  gpsFixAgeMs: number | null;
   timestampMs: bigint;
 };
 
 function isAuthorized(request: NextRequest) {
   const configuredKey = process.env.INGEST_API_KEY;
   if (!configuredKey) {
-    return { ok: false, status: 500, error: "Server ingest key is not configured." };
+    return {
+      ok: false,
+      status: 500,
+      error: "Server ingest key is not configured.",
+    };
   }
 
   const suppliedKey = request.headers.get("x-ingest-key");
@@ -59,6 +72,15 @@ function mapRecordToInsertData(record: {
   ttg_days: number | null;
   inside_temp_c?: number | null;
   outside_temp_c?: number | null;
+  gps_valid?: boolean | null;
+  gps_latitude?: number | null;
+  gps_longitude?: number | null;
+  gps_altitude_m?: number | null;
+  gps_speed_kmph?: number | null;
+  gps_course_deg?: number | null;
+  gps_satellites?: number | null;
+  gps_hdop?: number | null;
+  gps_fix_age_ms?: number | null;
   timestamp_ms: number;
 }): InsertTelemetryData {
   return {
@@ -71,6 +93,15 @@ function mapRecordToInsertData(record: {
     ttgDays: record.ttg_days,
     insideTempC: record.inside_temp_c ?? null,
     outsideTempC: record.outside_temp_c ?? null,
+    gpsValid: record.gps_valid ?? null,
+    gpsLatitude: record.gps_latitude ?? null,
+    gpsLongitude: record.gps_longitude ?? null,
+    gpsAltitudeM: record.gps_altitude_m ?? null,
+    gpsSpeedKmph: record.gps_speed_kmph ?? null,
+    gpsCourseDeg: record.gps_course_deg ?? null,
+    gpsSatellites: record.gps_satellites ?? null,
+    gpsHdop: record.gps_hdop ?? null,
+    gpsFixAgeMs: record.gps_fix_age_ms ?? null,
     timestampMs: BigInt(record.timestamp_ms),
   };
 }
@@ -96,10 +127,16 @@ function dedupeBatch(records: InsertTelemetryData[]) {
 export async function POST(request: NextRequest) {
   const auth = isAuthorized(request);
   if (!auth.ok) {
-    return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+    return NextResponse.json(
+      { ok: false, error: auth.error },
+      { status: auth.status },
+    );
   }
 
-  const contentLength = Number.parseInt(request.headers.get("content-length") ?? "", 10);
+  const contentLength = Number.parseInt(
+    request.headers.get("content-length") ?? "",
+    10,
+  );
   if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
     return NextResponse.json(
       { ok: false, error: `Request body exceeds ${MAX_REQUEST_BYTES} bytes.` },
@@ -140,7 +177,8 @@ export async function POST(request: NextRequest) {
     }
 
     const mappedRecords = parsedBatch.data.records.map(mapRecordToInsertData);
-    const { unique, duplicateCount: duplicatesInPayload } = dedupeBatch(mappedRecords);
+    const { unique, duplicateCount: duplicatesInPayload } =
+      dedupeBatch(mappedRecords);
 
     const result = await prisma.telemetryReading.createMany({
       data: unique,
