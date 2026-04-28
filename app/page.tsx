@@ -1,5 +1,3 @@
-
-
 import {
   Battery,
   Zap,
@@ -8,6 +6,7 @@ import {
   Gauge,
   Power,
   Thermometer,
+  MapPin,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
@@ -46,6 +45,11 @@ function formatNullable(value: number | null, digits = 2) {
 function formatTemperature(value: number | null) {
   if (value === null) return "-";
   return value.toFixed(1);
+}
+
+function formatCoordinate(value: number | null) {
+  if (value === null) return "-";
+  return value.toFixed(6);
 }
 
 function formatSampleTime(value: bigint | number | string | null) {
@@ -107,22 +111,24 @@ export default async function Home() {
   const serializedReadings = serializeReadings(readings);
   const latest = serializedReadings[0] ?? null;
 
-  const chartData = [...serializedReadings]
-    .reverse()
-    .map((reading) => ({
-      timestampMs: Number(reading.timestampMs),
-      voltage: reading.voltage,
-      current: reading.current,
-      soc: reading.soc,
-      power: reading.power,
-      auxVoltage: reading.auxVoltage,
-      ttgDays: reading.ttgDays,
-    }));
+  const chartData = [...serializedReadings].reverse().map((reading) => ({
+    timestampMs: Number(reading.timestampMs),
+    voltage: reading.voltage,
+    current: reading.current,
+    soc: reading.soc,
+    power: reading.power,
+    auxVoltage: reading.auxVoltage,
+    ttgDays: reading.ttgDays,
+  }));
 
   const sampleTimestamp = latest ? latest.timestampMs : null;
   const headerDateTime = formatHeaderDateTime(sampleTimestamp);
   const latestInsideTemperature = latest?.insideTemperature ?? null;
   const latestOutsideTemperature = latest?.outsideTemperature ?? null;
+  const latestGpsLatitude = latest?.gpsLatitude ?? null;
+  const latestGpsLongitude = latest?.gpsLongitude ?? null;
+  const hasLastPosition =
+    latestGpsLatitude !== null && latestGpsLongitude !== null;
 
   const isCharging = latest?.current !== null && latest.current > 0;
   const isDischarging = latest?.current !== null && latest.current < 0;
@@ -163,7 +169,7 @@ export default async function Home() {
 
                 <div
                   className={`text-7xl font-semibold leading-none tracking-tight tabular-nums md:text-9xl ${getSocTextColor(
-                    latest?.soc ?? null
+                    latest?.soc ?? null,
                   )}`}
                 >
                   {latest?.soc !== null && latest?.soc !== undefined
@@ -175,13 +181,10 @@ export default async function Home() {
                 <div className="mt-8 h-3 w-full max-w-md overflow-hidden rounded-full bg-zinc-800">
                   <div
                     className={`h-full rounded-full transition-all duration-500 ${getSocBarColor(
-                      latest?.soc ?? null
+                      latest?.soc ?? null,
                     )}`}
                     style={{
-                      width: `${Math.max(
-                        0,
-                        Math.min(latest?.soc ?? 0, 100)
-                      )}%`,
+                      width: `${Math.max(0, Math.min(latest?.soc ?? 0, 100))}%`,
                     }}
                   />
                 </div>
@@ -254,7 +257,7 @@ export default async function Home() {
           </Card>
         </section>
 
-        <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+        <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-5">
           <Card className={secondaryCardClassName}>
             <CardContent className="p-6 md:p-8">
               <div className="mb-3 flex items-center gap-2 text-zinc-500">
@@ -322,6 +325,52 @@ export default async function Home() {
           <Card className={secondaryCardClassName}>
             <CardContent className="p-6 md:p-8">
               <div className="mb-3 flex items-center gap-2 text-zinc-500">
+                <MapPin className="h-4 w-4" />
+                <span className="text-xs font-medium uppercase tracking-[0.16em]">
+                  Last Position
+                </span>
+              </div>
+
+              {hasLastPosition ? (
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-600">
+                      Latitude
+                    </div>
+                    <div className="mt-1 text-xl font-semibold tracking-tight tabular-nums text-zinc-200 md:text-2xl">
+                      {formatCoordinate(latestGpsLatitude)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-600">
+                      Longitude
+                    </div>
+                    <div className="mt-1 text-xl font-semibold tracking-tight tabular-nums text-zinc-200 md:text-2xl">
+                      {formatCoordinate(latestGpsLongitude)}
+                    </div>
+                  </div>
+
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${latestGpsLatitude},${latestGpsLongitude}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex text-sm font-medium text-sky-400 hover:text-sky-300"
+                  >
+                    Open in Maps
+                  </a>
+                </div>
+              ) : (
+                <div className="text-2xl font-semibold tracking-tight text-zinc-500 md:text-3xl">
+                  -
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className={secondaryCardClassName}>
+            <CardContent className="p-6 md:p-8">
+              <div className="mb-3 flex items-center gap-2 text-zinc-500">
                 <Clock className="h-4 w-4" />
                 <span className="text-xs font-medium uppercase tracking-[0.16em]">
                   Sample Time
@@ -329,8 +378,10 @@ export default async function Home() {
               </div>
 
               <LocalSampleTime
-  timestampMs={sampleTimestamp === null ? null : Number(sampleTimestamp)}
-/>
+                timestampMs={
+                  sampleTimestamp === null ? null : Number(sampleTimestamp)
+                }
+              />
             </CardContent>
           </Card>
         </section>
@@ -338,8 +389,6 @@ export default async function Home() {
         <section className="space-y-4">
           <Card className={secondaryCardClassName}>
             <CardContent className="">
-             
-
               {/* <TelemetryChart data={chartData} /> */}
               <BatteryChart data={serializedReadings} />
             </CardContent>
