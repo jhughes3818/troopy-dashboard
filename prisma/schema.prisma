@@ -19,6 +19,15 @@ model TelemetryReading {
   ttgDays    Float?
   insideTempC  Float?
   outsideTempC Float?
+  gpsValid    Boolean?
+  gpsLatitude Float?
+  gpsLongitude Float?
+  gpsAltitudeM Float?
+  gpsSpeedKmph Float?
+  gpsCourseDeg Float?
+  gpsSatellites Float?
+  gpsHdop Float?
+  gpsFixAgeMs Float?
   timestampMs BigInt
   receivedAt DateTime @default(now())
 

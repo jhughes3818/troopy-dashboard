@@ -1,0 +1,10 @@
+-- AlterTable
+ALTER TABLE "TelemetryReading" ADD COLUMN     "gpsAltitudeM" DOUBLE PRECISION,
+ADD COLUMN     "gpsCourseDeg" DOUBLE PRECISION,
+ADD COLUMN     "gpsFixAgeMs" DOUBLE PRECISION,
+ADD COLUMN     "gpsHdop" DOUBLE PRECISION,
+ADD COLUMN     "gpsLatitude" DOUBLE PRECISION,
+ADD COLUMN     "gpsLongitude" DOUBLE PRECISION,
+ADD COLUMN     "gpsSatellites" DOUBLE PRECISION,
+ADD COLUMN     "gpsSpeedKmph" DOUBLE PRECISION,
+ADD COLUMN     "gpsValid" BOOLEAN;
