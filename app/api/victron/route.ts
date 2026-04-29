@@ -10,7 +10,19 @@ import {
 
 const DEFAULT_LIMIT = 500;
 const MAX_LIMIT = 5000;
+
 export const dynamic = "force-dynamic";
+
+function ingestOkResponse() {
+  return new Response("OK", {
+    status: 200,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+      Connection: "close",
+    },
+  });
+}
 
 type InsertTelemetryData = {
   deviceId: string;
@@ -189,14 +201,7 @@ export async function POST(request: NextRequest) {
     const duplicatesAlreadyInDb = unique.length - inserted;
     const duplicates = duplicatesInPayload + duplicatesAlreadyInDb;
 
-    return NextResponse.json({
-      ok: true,
-      mode: "batch",
-      accepted: inserted,
-      duplicates,
-      rejected: parsedBatch.data.rejected,
-      errors: parsedBatch.data.errors,
-    });
+    return ingestOkResponse();
   }
 
   const parsedSingle = parseTelemetryPayload(body);
@@ -215,26 +220,7 @@ export async function POST(request: NextRequest) {
     skipDuplicates: true as never,
   });
 
-  const accepted = result.count;
-  const duplicates = accepted === 0 ? 1 : 0;
-
-  const reading = await prisma.telemetryReading.findFirst({
-    where: {
-      deviceId: data.deviceId,
-      timestampMs: data.timestampMs,
-    },
-    orderBy: { timestampMs: "desc" },
-  });
-
-  return NextResponse.json({
-    ok: true,
-    mode: "single",
-    accepted,
-    duplicates,
-    rejected: 0,
-    errors: [],
-    reading: reading ? serializeReading(reading) : null,
-  });
+  return ingestOkResponse();
 }
 
 export async function GET(request: NextRequest) {
