@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import { useMemo, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useMemo, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   CartesianGrid,
   Line,
@@ -17,60 +17,71 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from "recharts"
+} from "recharts";
 
-type TimeRange = "1h" | "3h" | "6h" | "12h" | "24h" | "1w"
-type Metric = "voltage" | "current" | "soc" | "insideTemperature" | "outsideTemperature"
+type TimeRange = "1h" | "3h" | "6h" | "12h" | "24h" | "1w";
+type Metric =
+  | "voltage"
+  | "current"
+  | "soc"
+  | "insideTemperature"
+  | "outsideTemperature"
+  | "speed";
 
 type TelemetryReading = {
-  timestampMs: number | string | bigint
-  voltage: number | null
-  current: number | null
-  soc: number | null
-  power?: number | null
-  auxVoltage?: number | null
-  ttgDays?: number | null
-  insideTemperature?: number | null
-  outsideTemperature?: number | null
-  insideTempC?: number | null
-  outsideTempC?: number | null
-}
+  timestampMs: number | string | bigint;
+  voltage: number | null;
+  current: number | null;
+  soc: number | null;
+  power?: number | null;
+  auxVoltage?: number | null;
+  ttgDays?: number | null;
+  insideTemperature?: number | null;
+  outsideTemperature?: number | null;
+  insideTempC?: number | null;
+  outsideTempC?: number | null;
+  speed?: number | null;
+  gpsSpeed?: number | null;
+  gpsSpeedKmph?: number | null;
+  speedKph?: number | null;
+};
 
 type ChartPoint = {
-  time: number
-  voltage: number | null
-  current: number | null
-  soc: number | null
-  insideTemperature: number | null
-  outsideTemperature: number | null
-}
+  time: number;
+  voltage: number | null;
+  current: number | null;
+  soc: number | null;
+  insideTemperature: number | null;
+  outsideTemperature: number | null;
+  speed: number | null;
+};
 
 interface BatteryChartProps {
-  data: TelemetryReading[]
+  data: TelemetryReading[];
 }
 
 function toTimestampMs(value: number | string | bigint): number {
-  if (typeof value === "bigint") return Number(value)
-  if (typeof value === "string") return Number(value)
-  return value
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "string") return Number(value);
+  return value;
 }
 
 function getRangeStart(range: TimeRange): number {
-  const now = Date.now()
+  const now = Date.now();
 
   switch (range) {
     case "1h":
-      return now - 60 * 60 * 1000
+      return now - 60 * 60 * 1000;
     case "3h":
-      return now - 3 * 60 * 60 * 1000
+      return now - 3 * 60 * 60 * 1000;
     case "6h":
-      return now - 6 * 60 * 60 * 1000
+      return now - 6 * 60 * 60 * 1000;
     case "12h":
-      return now - 12 * 60 * 60 * 1000
+      return now - 12 * 60 * 60 * 1000;
     case "24h":
-      return now - 24 * 60 * 60 * 1000
+      return now - 24 * 60 * 60 * 1000;
     case "1w":
-      return now - 7 * 24 * 60 * 60 * 1000
+      return now - 7 * 24 * 60 * 60 * 1000;
   }
 }
 
@@ -81,18 +92,35 @@ function formatXAxis(date: Date, range: TimeRange): string {
     case "6h":
     case "12h":
     case "24h":
-      return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      return date.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      });
     case "1w":
-      return date.toLocaleDateString([], { weekday: "short" })
+      return date.toLocaleDateString([], { weekday: "short" });
   }
 }
 
 function formatMetricValue(metric: Metric, value: number | null | undefined) {
-  if (value == null) return "-"
-  if (metric === "soc") return `${value.toFixed(1)}%`
-  if (metric === "voltage") return `${value.toFixed(2)}V`
-  if (metric === "current") return `${value.toFixed(2)}A`
-  return `${value.toFixed(1)}°C`
+  if (value == null) return "-";
+  if (metric === "soc") return `${value.toFixed(1)}%`;
+  if (metric === "voltage") return `${value.toFixed(2)}V`;
+  if (metric === "current") return `${value.toFixed(2)}A`;
+  if (metric === "speed") return `${value.toFixed(1)}km/h`;
+  return `${value.toFixed(1)}°C`;
+}
+
+function normaliseSpeedKph(reading: TelemetryReading): number | null {
+  const speed =
+    reading.speedKph ??
+    reading.gpsSpeedKmph ??
+    reading.gpsSpeed ??
+    reading.speed ??
+    null;
+
+  if (speed == null || !Number.isFinite(speed)) return null;
+
+  return speed;
 }
 
 function CustomTooltip({
@@ -100,13 +128,13 @@ function CustomTooltip({
   payload,
   label,
 }: {
-  active?: boolean
-  payload?: Array<{ dataKey: Metric; value: number | null; color: string }>
-  label?: number
+  active?: boolean;
+  payload?: Array<{ dataKey: Metric; value: number | null; color: string }>;
+  label?: number;
 }) {
-  if (!active || !payload?.length || label == null) return null
+  if (!active || !payload?.length || label == null) return null;
 
-  const date = new Date(label)
+  const date = new Date(label);
 
   return (
     <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-lg">
@@ -128,18 +156,16 @@ function CustomTooltip({
         </div>
       ))}
     </div>
-  )
+  );
 }
 
 export function BatteryChart({ data }: BatteryChartProps) {
-  const [timeRange, setTimeRange] = useState<TimeRange>("24h")
+  const [timeRange, setTimeRange] = useState<TimeRange>("6h");
   const [activeMetrics, setActiveMetrics] = useState<Metric[]>([
-    "voltage",
-    "current",
     "soc",
     "insideTemperature",
     "outsideTemperature",
-  ])
+  ]);
 
   const metricConfig = {
     voltage: { color: "#38bdf8", label: "Voltage (V)", yAxisId: "voltage" },
@@ -155,7 +181,8 @@ export function BatteryChart({ data }: BatteryChartProps) {
       label: "Outside Temp (°C)",
       yAxisId: "temperature",
     },
-  } as const
+    speed: { color: "#22c55e", label: "Speed (km/h)", yAxisId: "speed" },
+  } as const;
 
   const timeRangeOptions: Array<{ value: TimeRange; label: string }> = [
     { value: "1h", label: "1 hour" },
@@ -164,10 +191,10 @@ export function BatteryChart({ data }: BatteryChartProps) {
     { value: "12h", label: "12 hours" },
     { value: "24h", label: "24 hours" },
     { value: "1w", label: "1 week" },
-  ]
+  ];
 
   const chartData = useMemo<ChartPoint[]>(() => {
-    const rangeStart = getRangeStart(timeRange)
+    const rangeStart = getRangeStart(timeRange);
 
     return [...data]
       .map((reading) => ({
@@ -179,28 +206,33 @@ export function BatteryChart({ data }: BatteryChartProps) {
           reading.insideTemperature ?? reading.insideTempC ?? null,
         outsideTemperature:
           reading.outsideTemperature ?? reading.outsideTempC ?? null,
+        speed: normaliseSpeedKph(reading),
       }))
-      .filter((point) => Number.isFinite(point.time) && point.time >= rangeStart)
-      .sort((a, b) => a.time - b.time)
-  }, [data, timeRange])
+      .filter(
+        (point) => Number.isFinite(point.time) && point.time >= rangeStart,
+      )
+      .sort((a, b) => a.time - b.time);
+  }, [data, timeRange]);
 
   const toggleMetric = (metric: Metric) => {
     setActiveMetrics((prev) => {
       if (prev.includes(metric)) {
-        if (prev.length === 1) return prev
-        return prev.filter((m) => m !== metric)
+        if (prev.length === 1) return prev;
+        return prev.filter((m) => m !== metric);
       }
-      return [...prev, metric]
-    })
-  }
+      return [...prev, metric];
+    });
+  };
 
-  const hasData = chartData.length > 0
+  const hasData = chartData.length > 0;
 
   return (
     <Card className="border-zinc-800 bg-zinc-900">
       <CardHeader className="pb-2">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-lg font-semibold text-white">History</CardTitle>
+          <CardTitle className="text-lg font-semibold text-white">
+            History
+          </CardTitle>
 
           <Select
             value={timeRange}
@@ -250,7 +282,10 @@ export function BatteryChart({ data }: BatteryChartProps) {
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <LineChart
+                data={chartData}
+                margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
 
                 <XAxis
@@ -258,7 +293,9 @@ export function BatteryChart({ data }: BatteryChartProps) {
                   type="number"
                   domain={["dataMin", "dataMax"]}
                   scale="time"
-                  tickFormatter={(value) => formatXAxis(new Date(value), timeRange)}
+                  tickFormatter={(value) =>
+                    formatXAxis(new Date(value), timeRange)
+                  }
                   stroke="#52525b"
                   tick={{ fill: "#71717a", fontSize: 12 }}
                   tickLine={{ stroke: "#52525b" }}
@@ -278,31 +315,33 @@ export function BatteryChart({ data }: BatteryChartProps) {
                   />
                 )}
 
-                {activeMetrics.includes("current") && !activeMetrics.includes("voltage") && (
-                  <YAxis
-                    yAxisId="current"
-                    orientation="left"
-                    domain={["auto", "auto"]}
-                    stroke="#52525b"
-                    tick={{ fill: "#a3e635", fontSize: 12 }}
-                    tickLine={{ stroke: "#52525b" }}
-                    width={50}
-                    tickFormatter={(value) => `${value}A`}
-                  />
-                )}
+                {activeMetrics.includes("current") &&
+                  !activeMetrics.includes("voltage") && (
+                    <YAxis
+                      yAxisId="current"
+                      orientation="left"
+                      domain={["auto", "auto"]}
+                      stroke="#52525b"
+                      tick={{ fill: "#a3e635", fontSize: 12 }}
+                      tickLine={{ stroke: "#52525b" }}
+                      width={50}
+                      tickFormatter={(value) => `${value}A`}
+                    />
+                  )}
 
-                {activeMetrics.includes("current") && activeMetrics.includes("voltage") && (
-                  <YAxis
-                    yAxisId="current"
-                    orientation="right"
-                    domain={["auto", "auto"]}
-                    stroke="#52525b"
-                    tick={{ fill: "#a3e635", fontSize: 12 }}
-                    tickLine={{ stroke: "#52525b" }}
-                    width={50}
-                    tickFormatter={(value) => `${value}A`}
-                  />
-                )}
+                {activeMetrics.includes("current") &&
+                  activeMetrics.includes("voltage") && (
+                    <YAxis
+                      yAxisId="current"
+                      orientation="right"
+                      domain={["auto", "auto"]}
+                      stroke="#52525b"
+                      tick={{ fill: "#a3e635", fontSize: 12 }}
+                      tickLine={{ stroke: "#52525b" }}
+                      width={50}
+                      tickFormatter={(value) => `${value}A`}
+                    />
+                  )}
 
                 {activeMetrics.includes("soc") && (
                   <YAxis
@@ -314,7 +353,10 @@ export function BatteryChart({ data }: BatteryChartProps) {
                     tickLine={{ stroke: "#52525b" }}
                     width={50}
                     tickFormatter={(value) => `${value}%`}
-                    hide={activeMetrics.includes("current") && activeMetrics.includes("voltage")}
+                    hide={
+                      activeMetrics.includes("current") &&
+                      activeMetrics.includes("voltage")
+                    }
                   />
                 )}
 
@@ -331,7 +373,29 @@ export function BatteryChart({ data }: BatteryChartProps) {
                     tickFormatter={(value) => `${value}°C`}
                     hide={
                       activeMetrics.includes("soc") ||
-                      (activeMetrics.includes("current") && activeMetrics.includes("voltage"))
+                      activeMetrics.includes("speed") ||
+                      (activeMetrics.includes("current") &&
+                        activeMetrics.includes("voltage"))
+                    }
+                  />
+                )}
+
+                {activeMetrics.includes("speed") && (
+                  <YAxis
+                    yAxisId="speed"
+                    orientation="right"
+                    domain={[0, "auto"]}
+                    stroke="#52525b"
+                    tick={{ fill: "#22c55e", fontSize: 12 }}
+                    tickLine={{ stroke: "#52525b" }}
+                    width={60}
+                    tickFormatter={(value) => `${value}km/h`}
+                    hide={
+                      activeMetrics.includes("soc") ||
+                      activeMetrics.includes("insideTemperature") ||
+                      activeMetrics.includes("outsideTemperature") ||
+                      (activeMetrics.includes("current") &&
+                        activeMetrics.includes("voltage"))
                     }
                   />
                 )}
@@ -402,11 +466,24 @@ export function BatteryChart({ data }: BatteryChartProps) {
                     activeDot={{ r: 4, strokeWidth: 0 }}
                   />
                 )}
+
+                {activeMetrics.includes("speed") && (
+                  <Line
+                    yAxisId="speed"
+                    type="monotone"
+                    dataKey="speed"
+                    connectNulls={false}
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4, strokeWidth: 0 }}
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           )}
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }

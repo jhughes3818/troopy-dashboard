@@ -16,6 +16,7 @@ import { TelemetryChart } from "@/app/components/telemetry-chart";
 import { ClearHistoryButton } from "@/app/components/clear-history-button";
 import { BatteryChart } from "./components/battery-chart";
 import { LocalSampleTime } from "./components/local-sample-time";
+import GpsTraceMap from "./components/gpsTraceMap";
 
 const HISTORY_LIMIT = 5000;
 
@@ -119,6 +120,12 @@ export default async function Home() {
     power: reading.power,
     auxVoltage: reading.auxVoltage,
     ttgDays: reading.ttgDays,
+  }));
+
+  const gpsPoints = serializedReadings.map((r) => ({
+    gps_latitude: r.gpsLatitude,
+    gps_longitude: r.gpsLongitude,
+    sample_time: r.timestampMs,
   }));
 
   const sampleTimestamp = latest ? latest.timestampMs : null;
