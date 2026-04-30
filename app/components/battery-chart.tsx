@@ -123,6 +123,33 @@ function normaliseSpeedKph(reading: TelemetryReading): number | null {
   return speed;
 }
 
+function smoothSpeedSeries(points: ChartPoint[]): ChartPoint[] {
+  const stationaryThresholdKph = 1.5;
+  const smoothingWindow = 5;
+
+  return points.map((point, index) => {
+    if (point.speed == null) return point;
+
+    const windowStart = Math.max(0, index - smoothingWindow + 1);
+    const recentSpeeds = points
+      .slice(windowStart, index + 1)
+      .map((candidate) => candidate.speed)
+      .filter(
+        (speed): speed is number => speed != null && Number.isFinite(speed),
+      );
+
+    if (!recentSpeeds.length) return point;
+
+    const averageSpeed =
+      recentSpeeds.reduce((sum, speed) => sum + speed, 0) / recentSpeeds.length;
+
+    return {
+      ...point,
+      speed: averageSpeed < stationaryThresholdKph ? 0 : averageSpeed,
+    };
+  });
+}
+
 function CustomTooltip({
   active,
   payload,
@@ -196,7 +223,7 @@ export function BatteryChart({ data }: BatteryChartProps) {
   const chartData = useMemo<ChartPoint[]>(() => {
     const rangeStart = getRangeStart(timeRange);
 
-    return [...data]
+    const sortedPoints = [...data]
       .map((reading) => ({
         time: toTimestampMs(reading.timestampMs),
         voltage: reading.voltage,
@@ -212,6 +239,8 @@ export function BatteryChart({ data }: BatteryChartProps) {
         (point) => Number.isFinite(point.time) && point.time >= rangeStart,
       )
       .sort((a, b) => a.time - b.time);
+
+    return smoothSpeedSeries(sortedPoints);
   }, [data, timeRange]);
 
   const toggleMetric = (metric: Metric) => {
