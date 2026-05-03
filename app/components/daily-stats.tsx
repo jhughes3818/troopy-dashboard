@@ -176,18 +176,18 @@ export function DailyStats({
           <button
             onClick={onPrev}
             disabled={!canGoPrev}
-            className="rounded-full p-0.5 text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-25 disabled:cursor-not-allowed"
+            className="rounded-full p-2.5 text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-25 disabled:cursor-not-allowed"
             aria-label="Previous day"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <span className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
+          <span className="text-sm font-medium text-zinc-500">
             {label}
           </span>
           <button
             onClick={onNext}
             disabled={!canGoNext}
-            className="rounded-full p-0.5 text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-25 disabled:cursor-not-allowed"
+            className="rounded-full p-2.5 text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-25 disabled:cursor-not-allowed"
             aria-label="Next day"
           >
             <ChevronRight className="h-4 w-4" />

@@ -58,6 +58,10 @@ type ChartPoint = {
 
 interface BatteryChartProps {
   data: TelemetryReading[];
+  soc?: number | null;
+  current?: number | null;
+  insideTemperature?: number | null;
+  outsideTemperature?: number | null;
 }
 
 function toTimestampMs(value: number | string | bigint): number {
@@ -150,13 +154,22 @@ function smoothSpeedSeries(points: ChartPoint[]): ChartPoint[] {
   });
 }
 
+const metricConfig: Record<Metric, { color: string; label: string; yAxisId: string }> = {
+  voltage: { color: "#38bdf8", label: "Voltage (V)", yAxisId: "voltage" },
+  current: { color: "#a3e635", label: "Current (A)", yAxisId: "current" },
+  soc: { color: "#f97316", label: "SOC (%)", yAxisId: "soc" },
+  insideTemperature: { color: "#e879f9", label: "Inside Temp (°C)", yAxisId: "temperature" },
+  outsideTemperature: { color: "#facc15", label: "Outside Temp (°C)", yAxisId: "temperature" },
+  speed: { color: "#22c55e", label: "Speed (km/h)", yAxisId: "speed" },
+};
+
 function CustomTooltip({
   active,
   payload,
   label,
 }: {
   active?: boolean;
-  payload?: Array<{ dataKey: Metric; value: number | null; color: string }>;
+  payload?: ReadonlyArray<{ dataKey: Metric; value: number | null; color: string }>;
   label?: number;
 }) {
   if (!active || !payload?.length || label == null) return null;
@@ -176,7 +189,7 @@ function CustomTooltip({
             className="h-2 w-2 rounded-full"
             style={{ backgroundColor: entry.color }}
           />
-          <span className="capitalize text-zinc-400">{entry.dataKey}:</span>
+          <span className="text-zinc-400">{metricConfig[entry.dataKey]?.label ?? entry.dataKey}:</span>
           <span className="font-medium tabular-nums text-white">
             {formatMetricValue(entry.dataKey, entry.value)}
           </span>
@@ -186,30 +199,19 @@ function CustomTooltip({
   );
 }
 
-export function BatteryChart({ data }: BatteryChartProps) {
+export function BatteryChart({
+  data,
+  soc,
+  current,
+  insideTemperature,
+  outsideTemperature,
+}: BatteryChartProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>("6h");
   const [activeMetrics, setActiveMetrics] = useState<Metric[]>([
     "soc",
     "insideTemperature",
     "outsideTemperature",
   ]);
-
-  const metricConfig = {
-    voltage: { color: "#38bdf8", label: "Voltage (V)", yAxisId: "voltage" },
-    current: { color: "#a3e635", label: "Current (A)", yAxisId: "current" },
-    soc: { color: "#f97316", label: "SOC (%)", yAxisId: "soc" },
-    insideTemperature: {
-      color: "#e879f9",
-      label: "Inside Temp (°C)",
-      yAxisId: "temperature",
-    },
-    outsideTemperature: {
-      color: "#facc15",
-      label: "Outside Temp (°C)",
-      yAxisId: "temperature",
-    },
-    speed: { color: "#22c55e", label: "Speed (km/h)", yAxisId: "speed" },
-  } as const;
 
   const timeRangeOptions: Array<{ value: TimeRange; label: string }> = [
     { value: "1h", label: "1 hour" },
@@ -255,9 +257,42 @@ export function BatteryChart({ data }: BatteryChartProps) {
 
   const hasData = chartData.length > 0;
 
+  const socColor =
+    soc == null ? "text-zinc-400"
+    : soc >= 80 ? "text-emerald-400"
+    : soc >= 50 ? "text-amber-400"
+    : soc >= 20 ? "text-orange-400"
+    : "text-red-400";
+
+  const currentColor = (current ?? 0) >= 0 ? "text-emerald-400" : "text-amber-400";
+
   return (
     <Card className="border-zinc-800 bg-zinc-900">
       <CardHeader className="pb-2">
+        {(soc != null || current != null || insideTemperature != null || outsideTemperature != null) && (
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+            {soc != null && (
+              <span className={`text-base font-semibold tabular-nums ${socColor}`}>
+                {soc.toFixed(0)}%
+              </span>
+            )}
+            {current != null && (
+              <span className={`text-base font-semibold tabular-nums ${currentColor}`}>
+                {current >= 0 ? "+" : ""}{current.toFixed(1)}A
+              </span>
+            )}
+            {insideTemperature != null && (
+              <span className="text-base tabular-nums text-zinc-400">
+                <span className="text-zinc-600">in </span>{insideTemperature.toFixed(1)}°C
+              </span>
+            )}
+            {outsideTemperature != null && (
+              <span className="text-base tabular-nums text-zinc-400">
+                <span className="text-zinc-600">out </span>{outsideTemperature.toFixed(1)}°C
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-lg font-semibold text-white">
             History
