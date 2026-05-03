@@ -17,10 +17,21 @@ import { ClearHistoryButton } from "@/app/components/clear-history-button";
 import { BatteryChart } from "./components/battery-chart";
 import { LocalSampleTime } from "./components/local-sample-time";
 import GpsTraceMap from "./components/gpsTraceMap";
+import { DailyStats } from "./components/daily-stats";
 
-const HISTORY_LIMIT = 5000;
+const HISTORY_LIMIT = 50000;
+const HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const dynamic = "force-dynamic";
+
+async function fetchReadings() {
+  const oneWeekAgoMs = BigInt(Date.now() - HISTORY_WINDOW_MS);
+  return prisma.telemetryReading.findMany({
+    where: { timestampMs: { gte: oneWeekAgoMs } },
+    orderBy: { timestampMs: "desc" },
+    take: HISTORY_LIMIT,
+  });
+}
 
 function getSocTextColor(soc: number | null) {
   if (soc === null) return "text-zinc-400";
@@ -104,10 +115,7 @@ const secondaryCardClassName =
   "rounded-[28px] border border-zinc-800/60 bg-zinc-900/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-sm";
 
 export default async function Home() {
-  const readings = await prisma.telemetryReading.findMany({
-    orderBy: { timestampMs: "desc" },
-    take: HISTORY_LIMIT,
-  });
+  const readings = await fetchReadings();
 
   const serializedReadings = serializeReadings(readings);
   const latest = serializedReadings[0] ?? null;
@@ -127,6 +135,15 @@ export default async function Home() {
     gps_longitude: r.gpsLongitude,
     sample_time: r.timestampMs,
   }));
+
+  const todayStartMs = (() => {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    return d.getTime();
+  })();
+  const todayReadings = serializedReadings
+    .filter((r) => Number(r.timestampMs) >= todayStartMs)
+    .reverse();
 
   const sampleTimestamp = latest ? latest.timestampMs : null;
   const headerDateTime = formatHeaderDateTime(sampleTimestamp);
@@ -391,6 +408,10 @@ export default async function Home() {
               />
             </CardContent>
           </Card>
+        </section>
+
+        <section className="mb-4">
+          <DailyStats readings={todayReadings} />
         </section>
 
         <section className="space-y-4">
