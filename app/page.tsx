@@ -12,12 +12,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { serializeReadings } from "@/lib/telemetry";
 import { AutoRefresh } from "@/app/components/auto-refresh";
-import { TelemetryChart } from "@/app/components/telemetry-chart";
-import { ClearHistoryButton } from "@/app/components/clear-history-button";
 import { BatteryChart } from "./components/battery-chart";
 import { LocalSampleTime } from "./components/local-sample-time";
-import GpsTraceMap from "./components/gpsTraceMap";
-import { DailyStats } from "./components/daily-stats";
+import { DailyStatsSection } from "./components/daily-stats-section";
 
 const HISTORY_LIMIT = 50000;
 const HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -120,30 +117,16 @@ export default async function Home() {
   const serializedReadings = serializeReadings(readings);
   const latest = serializedReadings[0] ?? null;
 
-  const chartData = [...serializedReadings].reverse().map((reading) => ({
-    timestampMs: Number(reading.timestampMs),
-    voltage: reading.voltage,
-    current: reading.current,
-    soc: reading.soc,
-    power: reading.power,
-    auxVoltage: reading.auxVoltage,
-    ttgDays: reading.ttgDays,
+  const dailyStatsReadings = serializedReadings.map((r) => ({
+    timestampMs: Number(r.timestampMs),
+    gpsLatitude: r.gpsLatitude,
+    gpsLongitude: r.gpsLongitude,
+    gpsValid: r.gpsValid,
+    gpsSpeedKmph: r.gpsSpeedKmph,
+    insideTemperature: r.insideTemperature,
+    outsideTemperature: r.outsideTemperature,
+    soc: r.soc,
   }));
-
-  const gpsPoints = serializedReadings.map((r) => ({
-    gps_latitude: r.gpsLatitude,
-    gps_longitude: r.gpsLongitude,
-    sample_time: r.timestampMs,
-  }));
-
-  const todayStartMs = (() => {
-    const d = new Date();
-    d.setUTCHours(0, 0, 0, 0);
-    return d.getTime();
-  })();
-  const todayReadings = serializedReadings
-    .filter((r) => Number(r.timestampMs) >= todayStartMs)
-    .reverse();
 
   const sampleTimestamp = latest ? latest.timestampMs : null;
   const headerDateTime = formatHeaderDateTime(sampleTimestamp);
@@ -411,13 +394,12 @@ export default async function Home() {
         </section>
 
         <section className="mb-4">
-          <DailyStats readings={todayReadings} />
+          <DailyStatsSection readings={dailyStatsReadings} />
         </section>
 
         <section className="space-y-4">
           <Card className={secondaryCardClassName}>
             <CardContent className="">
-              {/* <TelemetryChart data={chartData} /> */}
               <BatteryChart data={serializedReadings} />
             </CardContent>
           </Card>

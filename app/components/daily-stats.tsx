@@ -1,4 +1,4 @@
-import { Route, Gauge, Thermometer, Battery, Navigation2 } from "lucide-react";
+import { Route, Gauge, Thermometer, Battery, ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 type Reading = {
@@ -8,7 +8,6 @@ type Reading = {
   gpsSpeedKmph: number | null;
   insideTemperature: number | null;
   outsideTemperature: number | null;
-  voltage: number | null;
   soc: number | null;
 };
 
@@ -38,8 +37,6 @@ function computeStats(readings: Reading[]) {
   let maxInsideTemp: number | null = null;
   let minOutsideTemp: number | null = null;
   let maxOutsideTemp: number | null = null;
-  let minVoltage: number | null = null;
-  let maxVoltage: number | null = null;
   let minSoc: number | null = null;
   let maxSoc: number | null = null;
   let prevLat: number | null = null;
@@ -88,13 +85,6 @@ function computeStats(readings: Reading[]) {
           : Math.max(maxOutsideTemp, r.outsideTemperature);
     }
 
-    if (r.voltage !== null) {
-      minVoltage =
-        minVoltage === null ? r.voltage : Math.min(minVoltage, r.voltage);
-      maxVoltage =
-        maxVoltage === null ? r.voltage : Math.max(maxVoltage, r.voltage);
-    }
-
     if (r.soc !== null) {
       minSoc = minSoc === null ? r.soc : Math.min(minSoc, r.soc);
       maxSoc = maxSoc === null ? r.soc : Math.max(maxSoc, r.soc);
@@ -108,8 +98,6 @@ function computeStats(readings: Reading[]) {
     maxInsideTempC: maxInsideTemp,
     minOutsideTempC: minOutsideTemp,
     maxOutsideTempC: maxOutsideTemp,
-    minVoltage,
-    maxVoltage,
     minSoc,
     maxSoc,
   };
@@ -165,16 +153,45 @@ function StatBlock({ label, icon, value, unit }: StatBlockProps) {
 type Props = {
   readings: Reading[];
   label?: string;
+  onPrev?: () => void;
+  onNext?: () => void;
+  canGoPrev?: boolean;
+  canGoNext?: boolean;
 };
 
-export function DailyStats({ readings, label = "Today" }: Props) {
+export function DailyStats({
+  readings,
+  label = "Today",
+  onPrev,
+  onNext,
+  canGoPrev = false,
+  canGoNext = false,
+}: Props) {
   const stats = computeStats(readings);
 
   return (
     <Card className={cardClass}>
       <CardContent className="p-6 md:p-8">
-        <div className="mb-6 text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
-          {label}
+        <div className="mb-6 flex items-center gap-2">
+          <button
+            onClick={onPrev}
+            disabled={!canGoPrev}
+            className="rounded-full p-0.5 text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-25 disabled:cursor-not-allowed"
+            aria-label="Previous day"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
+            {label}
+          </span>
+          <button
+            onClick={onNext}
+            disabled={!canGoNext}
+            className="rounded-full p-0.5 text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-25 disabled:cursor-not-allowed"
+            aria-label="Next day"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
         </div>
 
         <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-6">
@@ -220,17 +237,6 @@ export function DailyStats({ readings, label = "Today" }: Props) {
             unit={
               stats.minOutsideTempC !== null || stats.maxOutsideTempC !== null
                 ? "°C"
-                : undefined
-            }
-          />
-
-          <StatBlock
-            label="Voltage"
-            icon={<Navigation2 className="h-4 w-4" />}
-            value={fmtRange(stats.minVoltage, stats.maxVoltage, 2)}
-            unit={
-              stats.minVoltage !== null || stats.maxVoltage !== null
-                ? "V"
                 : undefined
             }
           />
