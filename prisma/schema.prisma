@@ -35,3 +35,21 @@ model TelemetryReading {
   @@index([deviceId, receivedAt(sort: Desc)])
   @@unique([deviceId, timestampMs])
 }
+
+model FuelLog {
+  id         String   @id @default(cuid())
+  filledAt   DateTime
+  litres     Float
+  isFull     Boolean  @default(false)
+  distanceKm Float?
+  pricePerL  Float?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@index([filledAt(sort: Asc)])
+}
+
+model VehicleProfile {
+  id            String  @id @default("vehicle")
+  tankCapacityL Float
+}

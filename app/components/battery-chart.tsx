@@ -89,19 +89,40 @@ function getRangeStart(range: TimeRange): number {
   }
 }
 
+const TICK_INTERVAL_MS: Record<TimeRange, number> = {
+  "1h":  10 * 60 * 1000,
+  "3h":  30 * 60 * 1000,
+  "6h":   1 * 60 * 60 * 1000,
+  "12h":  2 * 60 * 60 * 1000,
+  "24h":  4 * 60 * 60 * 1000,
+  "1w":  24 * 60 * 60 * 1000,
+};
+
+function getXAxisTicks(chartData: ChartPoint[], range: TimeRange): number[] {
+  if (chartData.length === 0) return [];
+  const step = TICK_INTERVAL_MS[range];
+  const start = chartData[0].time;
+  const end = chartData[chartData.length - 1].time;
+  // Shift into local time before snapping so ticks land on local boundaries
+  // (e.g. local midnight, local hour), then shift back to UTC ms.
+  const tzOffsetMs = new Date().getTimezoneOffset() * 60 * 1000;
+  const first = Math.ceil((start - tzOffsetMs) / step) * step + tzOffsetMs;
+  const ticks: number[] = [];
+  for (let t = first; t <= end; t += step) ticks.push(t);
+  return ticks;
+}
+
 function formatXAxis(date: Date, range: TimeRange): string {
   switch (range) {
     case "1h":
     case "3h":
+      return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     case "6h":
     case "12h":
     case "24h":
-      return date.toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      });
+      return date.toLocaleTimeString([], { hour: "numeric" });
     case "1w":
-      return date.toLocaleDateString([], { weekday: "short" });
+      return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
   }
 }
 
@@ -125,6 +146,39 @@ function normaliseSpeedKph(reading: TelemetryReading): number | null {
   if (speed == null || !Number.isFinite(speed)) return null;
 
   return speed;
+}
+
+const DOWNSAMPLE_BUCKET_MS: Partial<Record<TimeRange, number>> = {
+  "1w": 30 * 60 * 1000,
+};
+
+function downsample(points: ChartPoint[], bucketMs: number): ChartPoint[] {
+  if (points.length === 0) return points;
+
+  const buckets = new Map<number, ChartPoint[]>();
+  for (const point of points) {
+    const key = Math.floor(point.time / bucketMs) * bucketMs;
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(point);
+    else buckets.set(key, [point]);
+  }
+
+  const avg = (pts: ChartPoint[], get: (p: ChartPoint) => number | null): number | null => {
+    const vals = pts.map(get).filter((v): v is number => v !== null && Number.isFinite(v));
+    return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+  };
+
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([key, pts]) => ({
+      time: key + bucketMs / 2,
+      voltage: avg(pts, (p) => p.voltage),
+      current: avg(pts, (p) => p.current),
+      soc: avg(pts, (p) => p.soc),
+      insideTemperature: avg(pts, (p) => p.insideTemperature),
+      outsideTemperature: avg(pts, (p) => p.outsideTemperature),
+      speed: avg(pts, (p) => p.speed),
+    }));
 }
 
 function smoothSpeedSeries(points: ChartPoint[]): ChartPoint[] {
@@ -242,7 +296,9 @@ export function BatteryChart({
       )
       .sort((a, b) => a.time - b.time);
 
-    return smoothSpeedSeries(sortedPoints);
+    const smoothed = smoothSpeedSeries(sortedPoints);
+    const bucketMs = DOWNSAMPLE_BUCKET_MS[timeRange];
+    return bucketMs ? downsample(smoothed, bucketMs) : smoothed;
   }, [data, timeRange]);
 
   const toggleMetric = (metric: Metric) => {
@@ -357,13 +413,13 @@ export function BatteryChart({
                   type="number"
                   domain={["dataMin", "dataMax"]}
                   scale="time"
+                  ticks={getXAxisTicks(chartData, timeRange)}
                   tickFormatter={(value) =>
                     formatXAxis(new Date(value), timeRange)
                   }
                   stroke="#52525b"
                   tick={{ fill: "#71717a", fontSize: 12 }}
                   tickLine={{ stroke: "#52525b" }}
-                  interval="preserveStartEnd"
                 />
 
                 {activeMetrics.includes("voltage") && (
