@@ -8,6 +8,7 @@ export type RawTelemetryPayload = {
   ttg_days: number | null;
   inside_temp_c: number | null;
   outside_temp_c: number | null;
+  fridge_temp_c: number | null;
   gps_valid: boolean | null;
   gps_latitude: number | null;
   gps_longitude: number | null;
@@ -49,6 +50,7 @@ const NULLABLE_NUMERIC_FIELDS = [
   "ttg_days",
   "inside_temp_c",
   "outside_temp_c",
+  "fridge_temp_c",
   "gps_latitude",
   "gps_longitude",
   "gps_altitude_m",
@@ -178,6 +180,7 @@ type ReadingWithBigInt = {
   ttgDays: number | null;
   insideTempC: number | null;
   outsideTempC: number | null;
+  fridgeTempC: number | null;
   gpsValid: boolean | null;
   gpsLatitude: number | null;
   gpsLongitude: number | null;
@@ -196,6 +199,7 @@ export function serializeReading(reading: ReadingWithBigInt) {
     ...reading,
     insideTemperature: reading.insideTempC,
     outsideTemperature: reading.outsideTempC,
+    fridgeTemperature: reading.fridgeTempC,
     timestampMs: Number(reading.timestampMs),
   };
 }

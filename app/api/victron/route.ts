@@ -34,6 +34,7 @@ type InsertTelemetryData = {
   ttgDays: number | null;
   insideTempC: number | null;
   outsideTempC: number | null;
+  fridgeTempC: number | null;
   gpsValid: boolean | null;
   gpsLatitude: number | null;
   gpsLongitude: number | null;
@@ -84,6 +85,7 @@ function mapRecordToInsertData(record: {
   ttg_days: number | null;
   inside_temp_c?: number | null;
   outside_temp_c?: number | null;
+  fridge_temp_c?: number | null;
   gps_valid?: boolean | null;
   gps_latitude?: number | null;
   gps_longitude?: number | null;
@@ -105,6 +107,7 @@ function mapRecordToInsertData(record: {
     ttgDays: record.ttg_days,
     insideTempC: record.inside_temp_c ?? null,
     outsideTempC: record.outside_temp_c ?? null,
+    fridgeTempC: record.fridge_temp_c ?? null,
     gpsValid: record.gps_valid ?? null,
     gpsLatitude: record.gps_latitude ?? null,
     gpsLongitude: record.gps_longitude ?? null,

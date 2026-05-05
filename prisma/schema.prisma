@@ -19,6 +19,7 @@ model TelemetryReading {
   ttgDays    Float?
   insideTempC  Float?
   outsideTempC Float?
+  fridgeTempC  Float?
   gpsValid    Boolean?
   gpsLatitude Float?
   gpsLongitude Float?
