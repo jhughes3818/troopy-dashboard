@@ -8,48 +8,13 @@ import { AutoRefresh } from "@/app/components/auto-refresh";
 import { BatteryChart } from "./components/battery-chart";
 import { DailyStatsSection } from "./components/daily-stats-section";
 import { TEST_MODE, MOCK_FUEL_LOGS, MOCK_VEHICLE_PROFILE } from "@/lib/test-mode";
+import { computeGpsDistanceKm } from "@/lib/geo";
 
-const HISTORY_LIMIT = 50000;
-const HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const RAW_WINDOW_MS = 24 * 60 * 60 * 1000;
+const HOURLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const dynamic = "force-dynamic";
 
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-async function computeGpsDistanceKm(startMs: number, endMs: number): Promise<number | null> {
-  const readings = await prisma.telemetryReading.findMany({
-    where: {
-      gpsValid: true,
-      gpsLatitude: { not: null },
-      gpsLongitude: { not: null },
-      timestampMs: { gte: BigInt(Math.floor(startMs)), lte: BigInt(Math.floor(endMs)) },
-    },
-    orderBy: { timestampMs: "asc" },
-    select: { gpsLatitude: true, gpsLongitude: true },
-  });
-
-  if (readings.length < 2) return null;
-  let total = 0;
-  let hasDistance = false;
-  let prev: { gpsLatitude: number; gpsLongitude: number } | null = null;
-  for (const r of readings) {
-    if (r.gpsLatitude === null || r.gpsLongitude === null) continue;
-    if (prev) {
-      const d = haversineKm(prev.gpsLatitude, prev.gpsLongitude, r.gpsLatitude, r.gpsLongitude);
-      if (d >= 0.02 && d < 5) { total += d; hasDistance = true; }
-    }
-    prev = r as { gpsLatitude: number; gpsLongitude: number };
-  }
-  return hasDistance ? total : null;
-}
 
 type FuelEstimate = {
   tankCapacityL: number;
@@ -107,7 +72,7 @@ const fetchFuelEstimate = unstable_cache(async (): Promise<FuelEstimate | null> 
 
   const segmentDistanceKm = segmentEntries.every((e) => e.distanceKm !== null)
     ? segmentEntries.reduce((sum, e) => sum + (e.distanceKm as number), 0)
-    : await computeGpsDistanceKm(startFull.filledAt.getTime(), endFull.filledAt.getTime());
+    : (endFull.gpsDistanceKm ?? await computeGpsDistanceKm(startFull.filledAt.getTime(), endFull.filledAt.getTime()));
   if (!segmentDistanceKm || segmentDistanceKm <= 0) return null;
 
   const economyL100km = (totalLitresForSegment / segmentDistanceKm) * 100;
@@ -143,6 +108,27 @@ const fetchWaterEstimate = unstable_cache(async (): Promise<WaterEstimate | null
   const lastFill = await prisma.waterLog.findFirst({ orderBy: { filledAt: "desc" } });
   if (!lastFill) return null;
 
+  if (lastFill.waterSnapshotMl !== null) {
+    // Fast path: stored snapshot means we only need the single latest stationary reading.
+    // Delta from the snapshot gives water used since the last fill without scanning all rows.
+    const latestStationary = await prisma.telemetryReading.findFirst({
+      where: {
+        timestampMs: { gte: BigInt(lastFill.filledAt.getTime()) },
+        waterCumulativeMl: { not: null },
+        OR: [{ gpsSpeedKmph: null }, { gpsSpeedKmph: { lte: MOTION_THRESHOLD_KMPH } }],
+      },
+      orderBy: { timestampMs: "desc" },
+      select: { waterCumulativeMl: true },
+    });
+
+    const waterUsedMl = latestStationary?.waterCumulativeMl != null
+      ? Math.max(0, latestStationary.waterCumulativeMl - lastFill.waterSnapshotMl)
+      : 0;
+    const remainingL = Math.max(0, WATER_TANK_L - waterUsedMl / 1000);
+    return { remainingL, remainingPct: (remainingL / WATER_TANK_L) * 100, lastFillAt: lastFill.filledAt };
+  }
+
+  // Fallback for fills logged before the snapshot feature: scan all readings since fill.
   const readings = await prisma.telemetryReading.findMany({
     where: {
       timestampMs: { gte: BigInt(lastFill.filledAt.getTime()) },
@@ -170,20 +156,16 @@ const fetchWaterEstimate = unstable_cache(async (): Promise<WaterEstimate | null
   }
 
   const remainingL = Math.max(0, WATER_TANK_L - waterUsedMl / 1000);
-  return {
-    remainingL,
-    remainingPct: (remainingL / WATER_TANK_L) * 100,
-    lastFillAt: lastFill.filledAt,
-  };
+  return { remainingL, remainingPct: (remainingL / WATER_TANK_L) * 100, lastFillAt: lastFill.filledAt };
 }, ["water-estimate"], { revalidate: 300, tags: ["water-estimate"] });
 
-const fetchReadings = unstable_cache(
+const fetchRawReadings = unstable_cache(
   async () => {
-    const oneWeekAgoMs = BigInt(Date.now() - HISTORY_WINDOW_MS);
+    const oneDayAgoMs = BigInt(Date.now() - RAW_WINDOW_MS);
     const readings = await prisma.telemetryReading.findMany({
-      where: { timestampMs: { gte: oneWeekAgoMs } },
+      where: { timestampMs: { gte: oneDayAgoMs } },
       orderBy: { timestampMs: "desc" },
-      take: HISTORY_LIMIT,
+      take: 2000,
       omit: {
         gpsAltitudeM: true,
         gpsCourseDeg: true,
@@ -195,7 +177,31 @@ const fetchReadings = unstable_cache(
     });
     return serializeReadings(readings);
   },
-  ["readings"],
+  ["raw-readings"],
+  { revalidate: 60 },
+);
+
+const fetchHourlyReadings = unstable_cache(
+  async () => {
+    const oneWeekAgo = new Date(Date.now() - HOURLY_WINDOW_MS);
+    const rows = await prisma.telemetryHourly.findMany({
+      where: { hourBucket: { gte: oneWeekAgo } },
+      orderBy: { hourBucket: "desc" },
+    });
+    return rows.map((r) => ({
+      timestampMs: r.hourBucket.getTime(),
+      voltage: r.voltage,
+      current: r.current,
+      soc: r.soc,
+      insideTempC: r.insideTempC,
+      outsideTempC: r.outsideTempC,
+      fridgeTemperature: r.fridgeTempC,
+      gpsSpeedKmph: r.gpsSpeedKmph,
+      gpsLatitude: r.gpsLatitude,
+      gpsLongitude: r.gpsLongitude,
+    }));
+  },
+  ["hourly-readings"],
   { revalidate: 60 },
 );
 
@@ -252,18 +258,20 @@ const primaryCardClassName =
   "rounded-[28px] border border-zinc-800/70 bg-zinc-900/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] backdrop-blur-sm";
 
 export default async function Home() {
-  const [serializedReadings, fuelEstimate, waterEstimate] = await Promise.all([fetchReadings(), fetchFuelEstimate(), fetchWaterEstimate()]);
+  const [rawReadings, hourlyReadings, fuelEstimate, waterEstimate] = await Promise.all([
+    fetchRawReadings(), fetchHourlyReadings(), fetchFuelEstimate(), fetchWaterEstimate(),
+  ]);
 
-  const latest = serializedReadings[0] ?? null;
+  const latest = rawReadings[0] ?? null;
 
-  const dailyStatsReadings = serializedReadings.map((r) => ({
-    timestampMs: Number(r.timestampMs),
+  const dailyStatsReadings = hourlyReadings.map((r) => ({
+    timestampMs: r.timestampMs,
     gpsLatitude: r.gpsLatitude,
     gpsLongitude: r.gpsLongitude,
-    gpsValid: r.gpsValid,
+    gpsValid: r.gpsLatitude !== null && r.gpsLongitude !== null,
     gpsSpeedKmph: r.gpsSpeedKmph,
-    insideTemperature: r.insideTemperature,
-    outsideTemperature: r.outsideTemperature,
+    insideTemperature: r.insideTempC,
+    outsideTemperature: r.outsideTempC,
     soc: r.soc,
   }));
 
@@ -312,7 +320,8 @@ export default async function Home() {
         {/* Chart — primary view */}
         <section className="mb-4">
           <BatteryChart
-            data={serializedReadings}
+            data={rawReadings}
+            hourlyData={hourlyReadings}
             soc={latest?.soc ?? null}
             current={latest?.current ?? null}
             insideTemperature={latestInsideTemperature}

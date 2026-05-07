@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { aggregateHourlyBuckets } from "@/lib/aggregate";
 import {
   MAX_REQUEST_BYTES,
   parseBatchTelemetryPayload,
@@ -204,6 +205,7 @@ export async function POST(request: NextRequest) {
     const duplicatesAlreadyInDb = unique.length - inserted;
     const duplicates = duplicatesInPayload + duplicatesAlreadyInDb;
 
+    aggregateHourlyBuckets().catch(console.error);
     return ingestOkResponse();
   }
 
@@ -218,11 +220,12 @@ export async function POST(request: NextRequest) {
   const payload = parsedSingle.data;
   const data = mapRecordToInsertData(payload);
 
-  const result = await prisma.telemetryReading.createMany({
+  await prisma.telemetryReading.createMany({
     data: [data],
     skipDuplicates: true as never,
   });
 
+  aggregateHourlyBuckets().catch(console.error);
   return ingestOkResponse();
 }
 

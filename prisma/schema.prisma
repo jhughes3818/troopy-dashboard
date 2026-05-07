@@ -39,15 +39,46 @@ model TelemetryReading {
   @@unique([deviceId, timestampMs])
 }
 
+model TelemetryHourly {
+  id                String   @id @default(cuid())
+  deviceId          String
+  hourBucket        DateTime // UTC, truncated to start of hour
+
+  voltage           Float?
+  current           Float?
+  soc               Float?
+  power             Float?
+  auxVoltage        Float?
+  ttgDays           Float?
+  insideTempC       Float?
+  outsideTempC      Float?
+  fridgeTempC       Float?
+  gpsLatitude       Float?
+  gpsLongitude      Float?
+  gpsSpeedKmph      Float?
+  waterFlowMlMin    Float?
+
+  socMin            Float?
+  voltageMin        Float?
+
+  waterCumulativeMl Float?
+
+  sampleCount       Int
+
+  @@unique([deviceId, hourBucket])
+  @@index([deviceId, hourBucket(sort: Desc)])
+}
+
 model FuelLog {
-  id         String   @id @default(cuid())
-  filledAt   DateTime
-  litres     Float
-  isFull     Boolean  @default(false)
-  distanceKm Float?
-  pricePerL  Float?
-  notes      String?
-  createdAt  DateTime @default(now())
+  id               String   @id @default(cuid())
+  filledAt         DateTime
+  litres           Float
+  isFull           Boolean  @default(false)
+  distanceKm       Float?
+  gpsDistanceKm    Float?
+  pricePerL        Float?
+  notes            String?
+  createdAt        DateTime @default(now())
 
   @@index([filledAt(sort: Asc)])
 }
@@ -58,10 +89,11 @@ model VehicleProfile {
 }
 
 model WaterLog {
-  id        String   @id @default(cuid())
-  filledAt  DateTime
-  notes     String?
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  filledAt        DateTime
+  notes           String?
+  waterSnapshotMl Float?
+  createdAt       DateTime @default(now())
 
   @@index([filledAt(sort: Asc)])
 }

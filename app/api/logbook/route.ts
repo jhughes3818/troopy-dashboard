@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { revalidateTag } from "next/cache";
+import { computeGpsDistanceKm } from "@/lib/geo";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,22 @@ export async function POST(request: NextRequest) {
   const entry = await prisma.fuelLog.create({
     data: { filledAt, litres, isFull, distanceKm, pricePerL, notes },
   });
+
+  if (isFull) {
+    const prevFull = await prisma.fuelLog.findFirst({
+      where: { isFull: true, filledAt: { lt: filledAt }, id: { not: entry.id } },
+      orderBy: { filledAt: "desc" },
+    });
+    if (prevFull) {
+      const gpsDistanceKm = await computeGpsDistanceKm(
+        prevFull.filledAt.getTime(),
+        filledAt.getTime(),
+      );
+      if (gpsDistanceKm !== null) {
+        await prisma.fuelLog.update({ where: { id: entry.id }, data: { gpsDistanceKm } });
+      }
+    }
+  }
 
   revalidateTag("fuel-estimate", "max");
   return NextResponse.json({ ok: true, entry }, { status: 201 });

@@ -61,6 +61,7 @@ type ChartPoint = {
 
 interface BatteryChartProps {
   data: TelemetryReading[];
+  hourlyData?: TelemetryReading[];
   soc?: number | null;
   current?: number | null;
   insideTemperature?: number | null;
@@ -261,6 +262,7 @@ function CustomTooltip({
 
 export function BatteryChart({
   data,
+  hourlyData,
   soc,
   current,
   insideTemperature,
@@ -285,9 +287,11 @@ export function BatteryChart({
   ];
 
   const chartData = useMemo<ChartPoint[]>(() => {
+    const useHourly = timeRange === "1w" && hourlyData != null && hourlyData.length > 0;
+    const source = useHourly ? hourlyData : data;
     const rangeStart = getRangeStart(timeRange);
 
-    const sortedPoints = [...data]
+    const sortedPoints = [...source]
       .map((reading) => ({
         time: toTimestampMs(reading.timestampMs),
         voltage: reading.voltage,
@@ -306,9 +310,10 @@ export function BatteryChart({
       .sort((a, b) => a.time - b.time);
 
     const smoothed = smoothSpeedSeries(sortedPoints);
-    const bucketMs = DOWNSAMPLE_BUCKET_MS[timeRange];
+    // Skip downsampling when already using pre-bucketed hourly data
+    const bucketMs = useHourly ? undefined : DOWNSAMPLE_BUCKET_MS[timeRange];
     return bucketMs ? downsample(smoothed, bucketMs) : smoothed;
-  }, [data, timeRange]);
+  }, [data, hourlyData, timeRange]);
 
   const toggleMetric = (metric: Metric) => {
     setActiveMetrics((prev) => {

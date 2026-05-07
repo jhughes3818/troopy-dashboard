@@ -8,8 +8,21 @@ import { TankCapacityForm } from "./components/tank-capacity-form";
 import { AddWaterLogForm } from "./components/add-water-log-form";
 import { DeleteWaterLogButton } from "./components/delete-water-log-button";
 import { TEST_MODE, MOCK_FUEL_LOGS, MOCK_VEHICLE_PROFILE } from "@/lib/test-mode";
+import { unstable_cache } from "next/cache";
+import { computeGpsDistanceKm } from "@/lib/geo";
 
-export const dynamic = "force-dynamic";
+const fetchLogbookData = unstable_cache(
+  async () => {
+    const [entries, vehicleProfile, waterLogs] = await Promise.all([
+      prisma.fuelLog.findMany({ orderBy: { filledAt: "asc" } }),
+      prisma.vehicleProfile.findUnique({ where: { id: "vehicle" } }),
+      prisma.waterLog.findMany({ orderBy: { filledAt: "desc" } }),
+    ]);
+    return { entries, vehicleProfile, waterLogs };
+  },
+  ["logbook-data"],
+  { revalidate: 300, tags: ["fuel-estimate", "water-estimate"] },
+);
 
 type FuelLogEntry = {
   id: string;
@@ -17,6 +30,7 @@ type FuelLogEntry = {
   litres: number;
   isFull: boolean;
   distanceKm: number | null;
+  gpsDistanceKm: number | null;
   pricePerL: number | null;
   notes: string | null;
 };
@@ -33,54 +47,6 @@ type Segment = {
   economyL100km: number | null;
 };
 
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-async function computeGpsDistance(startMs: number, endMs: number): Promise<number | null> {
-  if (TEST_MODE) return null;
-  const readings = await prisma.telemetryReading.findMany({
-    where: {
-      gpsValid: true,
-      gpsLatitude: { not: null },
-      gpsLongitude: { not: null },
-      timestampMs: {
-        gte: BigInt(Math.floor(startMs)),
-        lte: BigInt(Math.floor(endMs)),
-      },
-    },
-    orderBy: { timestampMs: "asc" },
-    select: { gpsLatitude: true, gpsLongitude: true },
-  });
-
-  if (readings.length < 2) return null;
-
-  let total = 0;
-  let hasDistance = false;
-  let prev: { gpsLatitude: number; gpsLongitude: number } | null = null;
-
-  for (const r of readings) {
-    if (r.gpsLatitude === null || r.gpsLongitude === null) continue;
-    if (prev !== null) {
-      const d = haversineKm(prev.gpsLatitude, prev.gpsLongitude, r.gpsLatitude, r.gpsLongitude);
-      if (d >= 0.02 && d < 5) {
-        total += d;
-        hasDistance = true;
-      }
-    }
-    prev = r as { gpsLatitude: number; gpsLongitude: number };
-  }
-
-  return hasDistance ? total : null;
-}
 
 async function buildSegments(entries: FuelLogEntry[]): Promise<Segment[]> {
   const fullEntries = entries.filter((e) => e.isFull);
@@ -94,7 +60,7 @@ async function buildSegments(entries: FuelLogEntry[]): Promise<Segment[]> {
 
     // All fill-ups strictly after start up to and including end
     const segmentEntries = entries.filter(
-      (e) => e.filledAt > start.filledAt && e.filledAt <= end.filledAt,
+      (e) => new Date(e.filledAt) > new Date(start.filledAt) && new Date(e.filledAt) <= new Date(end.filledAt),
     );
 
     const totalLitres = segmentEntries.reduce((sum, e) => sum + e.litres, 0);
@@ -104,10 +70,9 @@ async function buildSegments(entries: FuelLogEntry[]): Promise<Segment[]> {
       ? segmentEntries.reduce((sum, e) => sum + (e.distanceKm as number), 0)
       : null;
 
-    const gpsDistanceKm = await computeGpsDistance(
-      start.filledAt.getTime(),
-      end.filledAt.getTime(),
-    );
+    const gpsDistanceKm = TEST_MODE
+      ? null
+      : (end.gpsDistanceKm ?? await computeGpsDistanceKm(new Date(start.filledAt).getTime(), new Date(end.filledAt).getTime()));
 
     const distanceKm = odoDistanceKm ?? gpsDistanceKm;
 
@@ -144,16 +109,16 @@ function fmt(v: number | null, digits = 1) {
   return v === null ? "-" : v.toFixed(digits);
 }
 
-function fmtDate(d: Date) {
-  return d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+function fmtDate(d: Date | string) {
+  return new Date(d).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function fmtDateShort(d: Date) {
-  return d.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+function fmtDateShort(d: Date | string) {
+  return new Date(d).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
 }
 
-function fmtDateTime(d: Date) {
-  return d.toLocaleString("en-AU", {
+function fmtDateTime(d: Date | string) {
+  return new Date(d).toLocaleString("en-AU", {
     day: "numeric",
     month: "short",
     hour: "numeric",
@@ -166,19 +131,15 @@ const cardClass =
   "rounded-[28px] border border-zinc-800/60 bg-zinc-900/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-sm";
 
 export default async function LogbookPage() {
-  const [entries, vehicleProfile, waterLogs] = TEST_MODE
-    ? [[...MOCK_FUEL_LOGS], MOCK_VEHICLE_PROFILE, []]
-    : await Promise.all([
-        prisma.fuelLog.findMany({ orderBy: { filledAt: "asc" } }),
-        prisma.vehicleProfile.findUnique({ where: { id: "vehicle" } }),
-        prisma.waterLog.findMany({ orderBy: { filledAt: "desc" } }),
-      ]);
+  const { entries, vehicleProfile, waterLogs } = TEST_MODE
+    ? { entries: [...MOCK_FUEL_LOGS], vehicleProfile: MOCK_VEHICLE_PROFILE, waterLogs: [] as never[] }
+    : await fetchLogbookData();
   const segments = await buildSegments(entries);
 
   // Entries that fall after the last full fill-up (not yet part of a closed segment)
   const lastFull = [...entries].reverse().find((e) => e.isFull);
   const pendingEntries = lastFull
-    ? entries.filter((e) => e.filledAt > lastFull.filledAt)
+    ? entries.filter((e) => new Date(e.filledAt) > new Date(lastFull.filledAt))
     : entries;
 
   return (

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { revalidateTag } from "next/cache";
 
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -32,8 +33,18 @@ export async function POST(request: NextRequest) {
 
   const notes = typeof b.notes === "string" && b.notes.trim() ? b.notes.trim() : null;
 
+  const latestWaterReading = await prisma.telemetryReading.findFirst({
+    where: { waterCumulativeMl: { not: null } },
+    orderBy: { timestampMs: "desc" },
+    select: { waterCumulativeMl: true },
+  });
+
   const entry = await prisma.waterLog.create({
-    data: { filledAt, notes },
+    data: {
+      filledAt,
+      notes,
+      waterSnapshotMl: latestWaterReading?.waterCumulativeMl ?? null,
+    },
   });
 
   revalidateTag("water-estimate", "max");
