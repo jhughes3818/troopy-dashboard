@@ -119,7 +119,7 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
@@ -127,6 +127,12 @@
   html {
     @apply font-sans;
   }
+}
+
+/* Force dark base so semi-transparent dashboard backgrounds don't composite against white */
+html,
+body {
+  background-color: #0a0a0f;
 }
 
 /* Dashboard responsive layout — explicit media queries so they work regardless of Tailwind purge */
