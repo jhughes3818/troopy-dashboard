@@ -12,6 +12,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/api/login") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/victron") ||
+    pathname.startsWith("/api/aggregate") ||
     pathname.startsWith("/favicon")
   ) {
     return NextResponse.next();
