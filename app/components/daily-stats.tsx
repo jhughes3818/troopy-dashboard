@@ -1,4 +1,4 @@
-import { Route, Gauge, Thermometer, Battery, ChevronLeft, ChevronRight } from "lucide-react";
+import { Route, Gauge, Thermometer, Battery, ChevronLeft, ChevronRight, Droplets } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 type Reading = {
@@ -157,6 +157,8 @@ type Props = {
   onNext?: () => void;
   canGoPrev?: boolean;
   canGoNext?: boolean;
+  waterRemainingL?: number | null;
+  waterRemainingPct?: number | null;
 };
 
 export function DailyStats({
@@ -166,6 +168,8 @@ export function DailyStats({
   onNext,
   canGoPrev = false,
   canGoNext = false,
+  waterRemainingL = null,
+  waterRemainingPct = null,
 }: Props) {
   const stats = computeStats(readings);
 
@@ -246,6 +250,26 @@ export function DailyStats({
             icon={<Battery className="h-4 w-4" />}
             value={fmtRange(stats.minSoc, stats.maxSoc, 0)}
             unit={stats.minSoc !== null || stats.maxSoc !== null ? "%" : undefined}
+          />
+
+          <StatBlock
+            label="Water"
+            icon={<Droplets className="h-4 w-4" />}
+            value={
+              waterRemainingL === null ? (
+                "-"
+              ) : (
+                <span className="text-sky-400">
+                  {waterRemainingL.toFixed(1)}
+                  {waterRemainingPct !== null && (
+                    <span className="ml-1.5 text-base font-normal text-zinc-500">
+                      L
+                    </span>
+                  )}
+                </span>
+              )
+            }
+            unit={waterRemainingPct !== null ? `${waterRemainingPct.toFixed(0)}%` : undefined}
           />
         </div>
       </CardContent>

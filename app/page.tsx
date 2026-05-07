@@ -130,6 +130,53 @@ const fetchFuelEstimate = unstable_cache(async (): Promise<FuelEstimate | null> 
   return { tankCapacityL: vehicleProfile.tankCapacityL, distanceSinceLastFullKm, economyL100km, remainingFuelL, estimatedRangeKm };
 }, ["fuel-estimate"], { revalidate: 300, tags: ["fuel-estimate"] });
 
+const WATER_TANK_L = 45;
+const MOTION_THRESHOLD_KMPH = 5;
+
+type WaterEstimate = {
+  remainingL: number;
+  remainingPct: number;
+  lastFillAt: Date;
+};
+
+const fetchWaterEstimate = unstable_cache(async (): Promise<WaterEstimate | null> => {
+  const lastFill = await prisma.waterLog.findFirst({ orderBy: { filledAt: "desc" } });
+  if (!lastFill) return null;
+
+  const readings = await prisma.telemetryReading.findMany({
+    where: {
+      timestampMs: { gte: BigInt(lastFill.filledAt.getTime()) },
+      waterCumulativeMl: { not: null },
+    },
+    orderBy: { timestampMs: "asc" },
+    select: { waterCumulativeMl: true, gpsSpeedKmph: true },
+  });
+
+  let waterUsedMl = 0;
+  let prevStationary: { waterCumulativeMl: number } | null = null;
+
+  for (const r of readings) {
+    if (r.waterCumulativeMl === null) continue;
+    const isStationary = r.gpsSpeedKmph === null || r.gpsSpeedKmph <= MOTION_THRESHOLD_KMPH;
+    if (isStationary) {
+      if (prevStationary !== null) {
+        const delta = r.waterCumulativeMl - prevStationary.waterCumulativeMl;
+        if (delta > 0) waterUsedMl += delta;
+      }
+      prevStationary = { waterCumulativeMl: r.waterCumulativeMl };
+    } else {
+      prevStationary = null;
+    }
+  }
+
+  const remainingL = Math.max(0, WATER_TANK_L - waterUsedMl / 1000);
+  return {
+    remainingL,
+    remainingPct: (remainingL / WATER_TANK_L) * 100,
+    lastFillAt: lastFill.filledAt,
+  };
+}, ["water-estimate"], { revalidate: 300, tags: ["water-estimate"] });
+
 const fetchReadings = unstable_cache(
   async () => {
     const oneWeekAgoMs = BigInt(Date.now() - HISTORY_WINDOW_MS);
@@ -205,7 +252,7 @@ const primaryCardClassName =
   "rounded-[28px] border border-zinc-800/70 bg-zinc-900/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] backdrop-blur-sm";
 
 export default async function Home() {
-  const [serializedReadings, fuelEstimate] = await Promise.all([fetchReadings(), fetchFuelEstimate()]);
+  const [serializedReadings, fuelEstimate, waterEstimate] = await Promise.all([fetchReadings(), fetchFuelEstimate(), fetchWaterEstimate()]);
 
   const latest = serializedReadings[0] ?? null;
 
@@ -276,7 +323,11 @@ export default async function Home() {
 
         {/* Daily stats */}
         <section className="mb-4">
-          <DailyStatsSection readings={dailyStatsReadings} />
+          <DailyStatsSection
+            readings={dailyStatsReadings}
+            waterRemainingL={waterEstimate?.remainingL ?? null}
+            waterRemainingPct={waterEstimate?.remainingPct ?? null}
+          />
         </section>
 
         {/* Fuel estimate */}

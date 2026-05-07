@@ -30,7 +30,15 @@ function dayLabel(key: string, todayKey: string): string {
   return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
-export function DailyStatsSection({ readings }: { readings: DailyStatsReading[] }) {
+export function DailyStatsSection({
+  readings,
+  waterRemainingL = null,
+  waterRemainingPct = null,
+}: {
+  readings: DailyStatsReading[];
+  waterRemainingL?: number | null;
+  waterRemainingPct?: number | null;
+}) {
   const todayKey = utcDayKey(Date.now());
 
   const availableDays = useMemo(() => {
@@ -61,6 +69,8 @@ export function DailyStatsSection({ readings }: { readings: DailyStatsReading[] 
       onNext={() => setSelectedIndex((i) => i - 1)}
       canGoPrev={canGoBack}
       canGoNext={canGoForward}
+      waterRemainingL={waterRemainingL}
+      waterRemainingPct={waterRemainingPct}
     />
   );
 }

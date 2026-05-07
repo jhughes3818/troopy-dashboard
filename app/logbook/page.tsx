@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
-import { ArrowLeft, Fuel } from "lucide-react";
+import { ArrowLeft, Fuel, Droplets } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { AddFuelLogForm } from "./components/add-fuel-log-form";
 import { DeleteFuelLogButton } from "./components/delete-fuel-log-button";
 import { TankCapacityForm } from "./components/tank-capacity-form";
+import { AddWaterLogForm } from "./components/add-water-log-form";
+import { DeleteWaterLogButton } from "./components/delete-water-log-button";
 import { TEST_MODE, MOCK_FUEL_LOGS, MOCK_VEHICLE_PROFILE } from "@/lib/test-mode";
 
 export const dynamic = "force-dynamic";
@@ -164,11 +166,12 @@ const cardClass =
   "rounded-[28px] border border-zinc-800/60 bg-zinc-900/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-sm";
 
 export default async function LogbookPage() {
-  const [entries, vehicleProfile] = TEST_MODE
-    ? [[...MOCK_FUEL_LOGS], MOCK_VEHICLE_PROFILE]
+  const [entries, vehicleProfile, waterLogs] = TEST_MODE
+    ? [[...MOCK_FUEL_LOGS], MOCK_VEHICLE_PROFILE, []]
     : await Promise.all([
         prisma.fuelLog.findMany({ orderBy: { filledAt: "asc" } }),
         prisma.vehicleProfile.findUnique({ where: { id: "vehicle" } }),
+        prisma.waterLog.findMany({ orderBy: { filledAt: "desc" } }),
       ]);
   const segments = await buildSegments(entries);
 
@@ -403,13 +406,73 @@ export default async function LogbookPage() {
         </section>
 
         {/* Vehicle settings */}
-        <section>
+        <section className="mb-6">
           <h2 className="mb-3 text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
             Vehicle Settings
           </h2>
           <Card className={cardClass}>
             <CardContent className="p-5 md:p-6">
               <TankCapacityForm currentCapacity={vehicleProfile?.tankCapacityL ?? null} />
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Water fill history */}
+        {waterLogs.length > 0 && (
+          <section className="mb-6">
+            <h2 className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
+              <Droplets className="h-3.5 w-3.5" />
+              Water Fill History
+            </h2>
+            <Card className={cardClass}>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-800/60">
+                        <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-[0.12em] text-zinc-500">
+                          Date
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.12em] text-zinc-500">
+                          Notes
+                        </th>
+                        <th className="px-4 py-3" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {waterLogs.map((entry) => (
+                        <tr
+                          key={entry.id}
+                          className="border-b border-zinc-800/40 last:border-0 hover:bg-zinc-800/20"
+                        >
+                          <td className="px-5 py-3.5 tabular-nums text-zinc-300">
+                            {fmtDateTime(entry.filledAt)}
+                          </td>
+                          <td className="px-4 py-3.5 text-zinc-500">
+                            {entry.notes ?? ""}
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <DeleteWaterLogButton id={entry.id} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {/* Log water fill */}
+        <section>
+          <h2 className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
+            <Droplets className="h-3.5 w-3.5" />
+            Log Water Fill
+          </h2>
+          <Card className={cardClass}>
+            <CardContent className="p-5 md:p-6">
+              <AddWaterLogForm />
             </CardContent>
           </Card>
         </section>

@@ -29,6 +29,8 @@ model TelemetryReading {
   gpsSatellites Float?
   gpsHdop Float?
   gpsFixAgeMs Float?
+  waterCumulativeMl Float?
+  waterFlowMlMin    Float?
   timestampMs BigInt
   receivedAt DateTime @default(now())
 
@@ -53,4 +55,13 @@ model FuelLog {
 model VehicleProfile {
   id            String  @id @default("vehicle")
   tankCapacityL Float
+}
+
+model WaterLog {
+  id        String   @id @default(cuid())
+  filledAt  DateTime
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([filledAt(sort: Asc)])
 }
