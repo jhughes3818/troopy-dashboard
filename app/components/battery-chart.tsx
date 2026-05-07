@@ -26,6 +26,7 @@ type Metric =
   | "soc"
   | "insideTemperature"
   | "outsideTemperature"
+  | "fridgeTemperature"
   | "speed";
 
 type TelemetryReading = {
@@ -38,6 +39,7 @@ type TelemetryReading = {
   ttgDays?: number | null;
   insideTemperature?: number | null;
   outsideTemperature?: number | null;
+  fridgeTemperature?: number | null;
   insideTempC?: number | null;
   outsideTempC?: number | null;
   speed?: number | null;
@@ -53,6 +55,7 @@ type ChartPoint = {
   soc: number | null;
   insideTemperature: number | null;
   outsideTemperature: number | null;
+  fridgeTemperature: number | null;
   speed: number | null;
 };
 
@@ -62,6 +65,7 @@ interface BatteryChartProps {
   current?: number | null;
   insideTemperature?: number | null;
   outsideTemperature?: number | null;
+  fridgeTemperature?: number | null;
 }
 
 function toTimestampMs(value: number | string | bigint): number {
@@ -177,6 +181,7 @@ function downsample(points: ChartPoint[], bucketMs: number): ChartPoint[] {
       soc: avg(pts, (p) => p.soc),
       insideTemperature: avg(pts, (p) => p.insideTemperature),
       outsideTemperature: avg(pts, (p) => p.outsideTemperature),
+      fridgeTemperature: avg(pts, (p) => p.fridgeTemperature),
       speed: avg(pts, (p) => p.speed),
     }));
 }
@@ -214,6 +219,7 @@ const metricConfig: Record<Metric, { color: string; label: string; yAxisId: stri
   soc: { color: "#f97316", label: "SOC (%)", yAxisId: "soc" },
   insideTemperature: { color: "#e879f9", label: "Inside Temp (°C)", yAxisId: "temperature" },
   outsideTemperature: { color: "#facc15", label: "Outside Temp (°C)", yAxisId: "temperature" },
+  fridgeTemperature: { color: "#67e8f9", label: "Fridge Temp (°C)", yAxisId: "temperature" },
   speed: { color: "#22c55e", label: "Speed (km/h)", yAxisId: "speed" },
 };
 
@@ -259,12 +265,14 @@ export function BatteryChart({
   current,
   insideTemperature,
   outsideTemperature,
+  fridgeTemperature,
 }: BatteryChartProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>("6h");
   const [activeMetrics, setActiveMetrics] = useState<Metric[]>([
     "soc",
     "insideTemperature",
     "outsideTemperature",
+    "fridgeTemperature",
   ]);
 
   const timeRangeOptions: Array<{ value: TimeRange; label: string }> = [
@@ -289,6 +297,7 @@ export function BatteryChart({
           reading.insideTemperature ?? reading.insideTempC ?? null,
         outsideTemperature:
           reading.outsideTemperature ?? reading.outsideTempC ?? null,
+        fridgeTemperature: reading.fridgeTemperature ?? null,
         speed: normaliseSpeedKph(reading),
       }))
       .filter(
@@ -325,7 +334,7 @@ export function BatteryChart({
   return (
     <Card className="border-zinc-800 bg-zinc-900">
       <CardHeader className="pb-2">
-        {(soc != null || current != null || insideTemperature != null || outsideTemperature != null) && (
+        {(soc != null || current != null || insideTemperature != null || outsideTemperature != null || fridgeTemperature != null) && (
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
             {soc != null && (
               <span className={`text-base font-semibold tabular-nums ${socColor}`}>
@@ -345,6 +354,11 @@ export function BatteryChart({
             {outsideTemperature != null && (
               <span className="text-base tabular-nums text-zinc-400">
                 <span className="text-zinc-600">out </span>{outsideTemperature.toFixed(1)}°C
+              </span>
+            )}
+            {fridgeTemperature != null && (
+              <span className="text-base tabular-nums text-cyan-300">
+                <span className="text-zinc-600">fridge </span>{fridgeTemperature.toFixed(1)}°C
               </span>
             )}
           </div>
@@ -481,7 +495,8 @@ export function BatteryChart({
                 )}
 
                 {(activeMetrics.includes("insideTemperature") ||
-                  activeMetrics.includes("outsideTemperature")) && (
+                  activeMetrics.includes("outsideTemperature") ||
+                  activeMetrics.includes("fridgeTemperature")) && (
                   <YAxis
                     yAxisId="temperature"
                     orientation="right"
@@ -514,6 +529,7 @@ export function BatteryChart({
                       activeMetrics.includes("soc") ||
                       activeMetrics.includes("insideTemperature") ||
                       activeMetrics.includes("outsideTemperature") ||
+                      activeMetrics.includes("fridgeTemperature") ||
                       (activeMetrics.includes("current") &&
                         activeMetrics.includes("voltage"))
                     }
@@ -581,6 +597,19 @@ export function BatteryChart({
                     dataKey="outsideTemperature"
                     connectNulls={false}
                     stroke="#facc15"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4, strokeWidth: 0 }}
+                  />
+                )}
+
+                {activeMetrics.includes("fridgeTemperature") && (
+                  <Line
+                    yAxisId="temperature"
+                    type="monotone"
+                    dataKey="fridgeTemperature"
+                    connectNulls={false}
+                    stroke="#67e8f9"
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4, strokeWidth: 0 }}

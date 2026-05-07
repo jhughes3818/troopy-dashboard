@@ -184,14 +184,8 @@ type ReadingWithBigInt = {
   gpsValid: boolean | null;
   gpsLatitude: number | null;
   gpsLongitude: number | null;
-  gpsAltitudeM: number | null;
   gpsSpeedKmph: number | null;
-  gpsCourseDeg: number | null;
-  gpsSatellites: number | null;
-  gpsHdop: number | null;
-  gpsFixAgeMs: number | null;
   timestampMs: bigint;
-  receivedAt: Date;
 };
 
 export function serializeReading(reading: ReadingWithBigInt) {

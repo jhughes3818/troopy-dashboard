@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { revalidateTag } from "next/cache";
 
 export const dynamic = "force-dynamic";
 
@@ -43,5 +44,6 @@ export async function POST(request: NextRequest) {
     data: { filledAt, litres, isFull, distanceKm, pricePerL, notes },
   });
 
+  revalidateTag("fuel-estimate", "max");
   return NextResponse.json({ ok: true, entry }, { status: 201 });
 }

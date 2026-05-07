@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { serializeReadings } from "@/lib/telemetry";
+import { unstable_cache } from "next/cache";
 import { AutoRefresh } from "@/app/components/auto-refresh";
 import { BatteryChart } from "./components/battery-chart";
 import { DailyStatsSection } from "./components/daily-stats-section";
@@ -58,7 +59,7 @@ type FuelEstimate = {
   estimatedRangeKm: number;
 };
 
-async function fetchFuelEstimate(): Promise<FuelEstimate | null> {
+const fetchFuelEstimate = unstable_cache(async (): Promise<FuelEstimate | null> => {
   if (TEST_MODE) {
     const logs = [...MOCK_FUEL_LOGS];
     const fullFillUps = logs.filter((e) => e.isFull);
@@ -127,16 +128,29 @@ async function fetchFuelEstimate(): Promise<FuelEstimate | null> {
   const estimatedRangeKm = economyL100km > 0 ? (remainingFuelL / economyL100km) * 100 : 0;
 
   return { tankCapacityL: vehicleProfile.tankCapacityL, distanceSinceLastFullKm, economyL100km, remainingFuelL, estimatedRangeKm };
-}
+}, ["fuel-estimate"], { revalidate: 300, tags: ["fuel-estimate"] });
 
-async function fetchReadings() {
-  const oneWeekAgoMs = BigInt(Date.now() - HISTORY_WINDOW_MS);
-  return prisma.telemetryReading.findMany({
-    where: { timestampMs: { gte: oneWeekAgoMs } },
-    orderBy: { timestampMs: "desc" },
-    take: HISTORY_LIMIT,
-  });
-}
+const fetchReadings = unstable_cache(
+  async () => {
+    const oneWeekAgoMs = BigInt(Date.now() - HISTORY_WINDOW_MS);
+    const readings = await prisma.telemetryReading.findMany({
+      where: { timestampMs: { gte: oneWeekAgoMs } },
+      orderBy: { timestampMs: "desc" },
+      take: HISTORY_LIMIT,
+      omit: {
+        gpsAltitudeM: true,
+        gpsCourseDeg: true,
+        gpsSatellites: true,
+        gpsHdop: true,
+        gpsFixAgeMs: true,
+        receivedAt: true,
+      },
+    });
+    return serializeReadings(readings);
+  },
+  ["readings"],
+  { revalidate: 60 },
+);
 
 function formatNullable(value: number | null, digits = 2) {
   if (value === null) return "-";
@@ -191,9 +205,8 @@ const primaryCardClassName =
   "rounded-[28px] border border-zinc-800/70 bg-zinc-900/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] backdrop-blur-sm";
 
 export default async function Home() {
-  const [readings, fuelEstimate] = await Promise.all([fetchReadings(), fetchFuelEstimate()]);
+  const [serializedReadings, fuelEstimate] = await Promise.all([fetchReadings(), fetchFuelEstimate()]);
 
-  const serializedReadings = serializeReadings(readings);
   const latest = serializedReadings[0] ?? null;
 
   const dailyStatsReadings = serializedReadings.map((r) => ({
@@ -211,6 +224,7 @@ export default async function Home() {
   const headerDateTime = formatHeaderDateTime(sampleTimestamp);
   const latestInsideTemperature = latest?.insideTemperature ?? null;
   const latestOutsideTemperature = latest?.outsideTemperature ?? null;
+  const latestFridgeTemperature = latest?.fridgeTemperature ?? null;
   const latestGpsLatitude = latest?.gpsLatitude ?? null;
   const latestGpsLongitude = latest?.gpsLongitude ?? null;
   const hasLastPosition =
@@ -218,7 +232,7 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
-      <AutoRefresh intervalMs={15000} />
+      <AutoRefresh intervalMs={30000} />
 
       <div className="mx-auto max-w-7xl p-4 md:p-6">
         <header className="mb-4 flex items-start justify-between gap-4">
@@ -256,6 +270,7 @@ export default async function Home() {
             current={latest?.current ?? null}
             insideTemperature={latestInsideTemperature}
             outsideTemperature={latestOutsideTemperature}
+            fridgeTemperature={latestFridgeTemperature}
           />
         </section>
 
