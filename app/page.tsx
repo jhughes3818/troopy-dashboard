@@ -169,19 +169,20 @@ const fetchWaterHourly = unstable_cache(
 function computeWaterDailyUsage(
   hourly: { timestampMs: number; waterCumulativeMl: number }[],
 ): { date: string; usedL: number }[] {
-  const byDay = new Map<string, { min: number; max: number }>();
+  const byDay = new Map<string, number>();
+  // Seed every day that has hourly data so zero-usage days still appear
   for (const r of hourly) {
     const day = new Date(r.timestampMs).toISOString().slice(0, 10);
-    const existing = byDay.get(day);
-    if (!existing) {
-      byDay.set(day, { min: r.waterCumulativeMl, max: r.waterCumulativeMl });
-    } else {
-      if (r.waterCumulativeMl < existing.min) existing.min = r.waterCumulativeMl;
-      if (r.waterCumulativeMl > existing.max) existing.max = r.waterCumulativeMl;
-    }
+    if (!byDay.has(day)) byDay.set(day, 0);
+  }
+  for (let i = 1; i < hourly.length; i++) {
+    const delta = hourly[i].waterCumulativeMl - hourly[i - 1].waterCumulativeMl;
+    if (delta <= 0) continue; // skip counter resets / device restarts
+    const day = new Date(hourly[i].timestampMs).toISOString().slice(0, 10);
+    byDay.set(day, (byDay.get(day) ?? 0) + delta);
   }
   return Array.from(byDay.entries())
-    .map(([date, { min, max }]) => ({ date, usedL: Math.max(0, (max - min) / 1000) }))
+    .map(([date, usedMl]) => ({ date, usedL: usedMl / 1000 }))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-7);
 }

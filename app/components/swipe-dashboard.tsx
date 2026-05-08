@@ -2,7 +2,7 @@
 
 import { useState, useRef, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Zap, Thermometer, MapPin, Home, Sun, Snowflake, Droplets, Fuel } from "lucide-react";
+import { Zap, Thermometer, MapPin, Home, Sun, Snowflake, Droplets, Fuel, Clock } from "lucide-react";
 
 const SIX_H = 6 * 60 * 60 * 1000;
 const MOTION_THRESHOLD = 5; // km/h
@@ -1054,10 +1054,11 @@ function WaterCard({
     pct > 50 ? "#38bdf8" : pct > 20 ? "#fbbf24" : "#ef4444";
 
   const usedValues = dailyUsage.map((d) => d.usedL);
-  const avgUsedL =
-    usedValues.length
-      ? usedValues.reduce((s, v) => s + v, 0) / usedValues.length
-      : null;
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const completedDays = dailyUsage.filter((d) => d.date < todayUtc);
+  const avgUsedL = completedDays.length
+    ? completedDays.reduce((s, d) => s + d.usedL, 0) / completedDays.length
+    : null;
 
   const dayLabels = dailyUsage.map(({ date }) => {
     const d = new Date(date + "T12:00:00Z");
@@ -1268,11 +1269,11 @@ function WaterCard({
           marginTop: 18,
           width: "100%",
           padding: "8px 12px",
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid rgba(255,255,255,0.07)",
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.12)",
           borderRadius: 8,
-          color: marking === "done" ? "rgba(56,189,248,0.6)" : "rgba(255,255,255,0.22)",
-          fontSize: 10,
+          color: marking === "done" ? "#38bdf8" : "rgba(255,255,255,0.45)",
+          fontSize: 11,
           letterSpacing: "0.1em",
           textTransform: "uppercase",
           cursor: marking === "idle" ? "pointer" : "default",
@@ -1902,6 +1903,13 @@ export function SwipeDashboard({
             {latest.outsideTemperature != null ? `${latest.outsideTemperature.toFixed(1)}°` : "—"}
           </span>
         </div>
+      </div>
+      <div style={{ width: 1, height: 24, background: "rgba(255,255,255,0.1)" }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        <Clock size={11} color="rgba(255,255,255,0.25)" />
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-geist-mono), monospace" }}>
+          {new Date(latest.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}
+        </span>
       </div>
     </>
   );
