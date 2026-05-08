@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
-import { Zap, Thermometer, MapPin, Home, Sun, Snowflake, Droplets } from "lucide-react";
+import { useState, useRef, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Zap, Thermometer, MapPin, Home, Sun, Snowflake, Droplets, Fuel } from "lucide-react";
 
 const SIX_H = 6 * 60 * 60 * 1000;
 const MOTION_THRESHOLD = 5; // km/h
@@ -19,6 +20,21 @@ type ReadingRow = {
   gpsSpeedKmph: number | null;
 };
 
+type BatteryHourRow = { hourBucket: number; current: number | null };
+
+type FuelLogEntry = {
+  id: string;
+  filledAt: number;
+  litres: number;
+  isFull: boolean;
+  distanceKm: number | null;
+  gpsDistanceKm: number | null;
+  pricePerL: number | null;
+  notes: string | null;
+};
+
+type GpsRow = { timestampMs: number; gpsSpeedKmph: number | null };
+
 interface SwipeDashboardProps {
   readings: ReadingRow[];
   latest: ReadingRow | null;
@@ -27,6 +43,10 @@ interface SwipeDashboardProps {
   waterRemainingPct?: number | null;
   waterTankL?: number;
   waterDailyUsage?: { date: string; usedL: number }[];
+  batteryHourly?: BatteryHourRow[];
+  fuelLogs?: FuelLogEntry[];
+  fuelTankCapacityL?: number | null;
+  gpsHistory?: GpsRow[];
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -140,7 +160,7 @@ function formatTTG(
   return `${hours}h ${minutes}m`;
 }
 
-function makeTimeLabels(history: ReadingRow[]): string[] {
+function makeTimeLabels(history: { timestampMs: number }[]): string[] {
   if (history.length < 2) return [];
   const start = history[0].timestampMs;
   const end = history[history.length - 1].timestampMs;
@@ -155,12 +175,106 @@ function makeTimeLabels(history: ReadingRow[]): string[] {
 
 // ── Card components ───────────────────────────────────────────────────────────
 
+function AmpHoursBarChart({ data }: { data: BatteryHourRow[] }) {
+  if (!data.length) return null;
+
+  const bars = data.map((row) => ({
+    hourBucket: row.hourBucket,
+    ah: row.current != null ? row.current : 0,
+  }));
+
+  const absMax = Math.max(...bars.map((b) => Math.abs(b.ah)), 0.1);
+  const w = 280;
+  const h = 72;
+  const midY = h / 2;
+  const slotW = w / bars.length;
+  const barW = Math.max(slotW * 0.6, 2);
+  const gap = slotW - barW;
+
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          color: "rgba(255,255,255,0.3)",
+          marginBottom: 6,
+        }}
+      >
+        Amp-Hours / Hour (24h)
+      </div>
+      <div style={{ borderRadius: 8, overflow: "hidden", position: "relative" }}>
+        <svg
+          viewBox={`0 0 ${w} ${h}`}
+          style={{ width: "100%", height: h, display: "block" }}
+          preserveAspectRatio="none"
+        >
+          {/* baseline */}
+          <line
+            x1={0} y1={midY} x2={w} y2={midY}
+            stroke="rgba(255,255,255,0.1)"
+            strokeWidth={0.5}
+          />
+          {bars.map((b, i) => {
+            const x = slotW * i + gap / 2;
+            const scale = (Math.abs(b.ah) / absMax) * (midY - 4);
+            const barH = Math.max(1.5, scale);
+            const isCharge = b.ah >= 0;
+            const y = isCharge ? midY - barH : midY;
+            return (
+              <rect
+                key={i}
+                x={x}
+                y={y}
+                width={barW}
+                height={barH}
+                rx={1.5}
+                fill={isCharge ? "#4ade80" : "#f87171"}
+                opacity={0.8}
+              />
+            );
+          })}
+        </svg>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginTop: 4,
+        }}
+      >
+        {[bars[0], bars[Math.floor(bars.length / 2)], bars[bars.length - 1]]
+          .filter(Boolean)
+          .map((b) => (
+            <span
+              key={b.hourBucket}
+              style={{
+                fontSize: 9,
+                color: "rgba(255,255,255,0.2)",
+                fontFamily: "var(--font-geist-mono), monospace",
+              }}
+            >
+              {new Date(b.hourBucket).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+              })}
+            </span>
+          ))}
+      </div>
+    </div>
+  );
+}
+
 function BatteryCard({
   history,
   latest,
+  hourlyData = [],
 }: {
   history: ReadingRow[];
   latest: ReadingRow;
+  hourlyData?: BatteryHourRow[];
 }) {
   const curData = history
     .map((r) => r.current)
@@ -339,6 +453,12 @@ function BatteryCard({
           </span>
         ))}
       </div>
+
+      {hourlyData.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <AmpHoursBarChart data={hourlyData} />
+        </div>
+      )}
     </div>
   );
 }
@@ -385,6 +505,9 @@ function TempCard({
     <div style={{ padding: "20px 20px 16px" }}>
       <div
         style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
           fontSize: 11,
           letterSpacing: "0.12em",
           textTransform: "uppercase",
@@ -392,7 +515,8 @@ function TempCard({
           marginBottom: 16,
         }}
       >
-        Temperature Sensors
+        <span>Temperature Sensors</span>
+        <span style={{ color: "rgba(255,255,255,0.25)" }}>Last 6h</span>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -453,7 +577,19 @@ function TempCard({
                   </span>
                 </div>
               </div>
-              <Sparkline data={data} color={color} min={minV} max={maxV} height={36} />
+              <div style={{ position: "relative" }}>
+                <Sparkline data={data} color={color} min={minV} max={maxV} height={36} />
+                {data.length > 0 && (
+                  <>
+                    <span style={{ position: "absolute", top: 0, left: 0, fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-geist-mono), monospace", lineHeight: 1 }}>
+                      {Math.max(...data).toFixed(1)}°
+                    </span>
+                    <span style={{ position: "absolute", bottom: 0, left: 0, fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-geist-mono), monospace", lineHeight: 1 }}>
+                      {Math.min(...data).toFixed(1)}°
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
           );
         })}
@@ -483,20 +619,56 @@ function TempCard({
   );
 }
 
-function GpsCard({ history }: { history: ReadingRow[] }) {
-  const speedData = history.map((r) => r.gpsSpeedKmph ?? 0);
-  const timeLabels = makeTimeLabels(history);
+function localDateKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function GpsCard({
+  history,
+  gpsHistory = [],
+}: {
+  history: ReadingRow[];
+  gpsHistory?: GpsRow[];
+}) {
+  const days = useMemo(() => {
+    if (!gpsHistory.length) return [];
+    const map = new Map<string, GpsRow[]>();
+    for (const r of gpsHistory) {
+      const key = localDateKey(r.timestampMs);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(r);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, rows]) => ({ date, rows }));
+  }, [gpsHistory]);
+
+  const [dayIndex, setDayIndex] = useState(() => Math.max(0, days.length - 1));
+
+  useEffect(() => {
+    setDayIndex(Math.max(0, days.length - 1));
+  }, [days.length]);
+
+  const hasDays = days.length > 0;
+  const activeIndex = Math.min(dayIndex, Math.max(0, days.length - 1));
+  const selectedDay = hasDays ? days[activeIndex] : null;
+  const activeRows: GpsRow[] = selectedDay?.rows ?? [];
+  const rowsForStats = hasDays ? activeRows : history;
+
+  const speedData = rowsForStats.map((r) => r.gpsSpeedKmph ?? 0);
+  const timeLabels = makeTimeLabels(rowsForStats);
 
   let distanceKm = 0;
   let maxSpeedKmph = 0;
   let movingMs = 0;
 
-  for (let i = 1; i < history.length; i++) {
-    const speed = history[i].gpsSpeedKmph ?? 0;
-    const dt = (history[i].timestampMs - history[i - 1].timestampMs) / 3_600_000;
+  for (let i = 1; i < rowsForStats.length; i++) {
+    const speed = rowsForStats[i].gpsSpeedKmph ?? 0;
+    const dt = (rowsForStats[i].timestampMs - rowsForStats[i - 1].timestampMs) / 3_600_000;
     if (speed > MOTION_THRESHOLD) {
       distanceKm += speed * dt;
-      movingMs += history[i].timestampMs - history[i - 1].timestampMs;
+      movingMs += rowsForStats[i].timestampMs - rowsForStats[i - 1].timestampMs;
     }
     if (speed > maxSpeedKmph) maxSpeedKmph = speed;
   }
@@ -524,19 +696,96 @@ function GpsCard({ history }: { history: ReadingRow[] }) {
     { label: "Moving", value: Math.round(movingMins).toString(), unit: "min", color: "#a78bfa" },
   ];
 
+  function dayLabel(date: string): string {
+    const today = localDateKey(Date.now());
+    const yesterday = localDateKey(Date.now() - 86_400_000);
+    if (date === today) return "Today";
+    if (date === yesterday) return "Yesterday";
+    return new Date(date + "T12:00:00").toLocaleDateString([], {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  }
+
+  const navBtnStyle = (disabled: boolean): React.CSSProperties => ({
+    background: "none",
+    border: "none",
+    cursor: disabled ? "default" : "pointer",
+    color: disabled ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.55)",
+    padding: "4px 10px",
+    fontSize: 20,
+    lineHeight: 1,
+    borderRadius: 6,
+    transition: "color 0.15s ease",
+  });
+
   return (
     <div style={{ padding: "20px 20px 16px" }}>
-      <div
-        style={{
-          fontSize: 11,
-          letterSpacing: "0.12em",
-          textTransform: "uppercase",
-          color: "rgba(255,255,255,0.4)",
-          marginBottom: 16,
-        }}
-      >
-        GPS & Travel
-      </div>
+      {/* Header: day navigation or static title */}
+      {hasDays ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 16,
+          }}
+        >
+          <button
+            onClick={() => setDayIndex((i) => Math.max(0, i - 1))}
+            disabled={activeIndex === 0}
+            style={navBtnStyle(activeIndex === 0)}
+          >
+            ‹
+          </button>
+          <div style={{ textAlign: "center" }}>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 600,
+                color: "white",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {selectedDay ? dayLabel(selectedDay.date) : "—"}
+            </div>
+            {days.length > 1 && (
+              <div
+                style={{
+                  fontSize: 9,
+                  color: "rgba(255,255,255,0.28)",
+                  fontFamily: "var(--font-geist-mono), monospace",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  marginTop: 2,
+                }}
+              >
+                {activeIndex + 1} / {days.length}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setDayIndex((i) => Math.min(days.length - 1, i + 1))}
+            disabled={activeIndex === days.length - 1}
+            style={navBtnStyle(activeIndex === days.length - 1)}
+          >
+            ›
+          </button>
+        </div>
+      ) : (
+        <div
+          style={{
+            fontSize: 11,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.4)",
+            marginBottom: 16,
+          }}
+        >
+          GPS & Travel
+        </div>
+      )}
 
       <div
         style={{
@@ -776,6 +1025,30 @@ function WaterCard({
   tankL?: number;
   dailyUsage?: { date: string; usedL: number }[];
 }) {
+  const router = useRouter();
+  const [marking, setMarking] = useState<"idle" | "loading" | "done">("idle");
+
+  async function handleMarkFull() {
+    setMarking("loading");
+    try {
+      const res = await fetch("/api/water", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filledAt: new Date().toISOString() }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setMarking("done");
+        router.refresh();
+        setTimeout(() => setMarking("idle"), 2500);
+      } else {
+        setMarking("idle");
+      }
+    } catch {
+      setMarking("idle");
+    }
+  }
+
   const pct = remainingPct ?? 0;
   const waterColor =
     pct > 50 ? "#38bdf8" : pct > 20 ? "#fbbf24" : "#ef4444";
@@ -987,6 +1260,535 @@ function WaterCard({
           </div>
         )}
       </div>
+
+      <button
+        onClick={handleMarkFull}
+        disabled={marking !== "idle"}
+        style={{
+          marginTop: 18,
+          width: "100%",
+          padding: "8px 12px",
+          background: "rgba(255,255,255,0.03)",
+          border: "1px solid rgba(255,255,255,0.07)",
+          borderRadius: 8,
+          color: marking === "done" ? "rgba(56,189,248,0.6)" : "rgba(255,255,255,0.22)",
+          fontSize: 10,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          cursor: marking === "idle" ? "pointer" : "default",
+          fontFamily: "var(--font-geist-mono), monospace",
+          transition: "color 0.2s ease, border-color 0.2s ease",
+        }}
+      >
+        {marking === "loading" ? "Saving…" : marking === "done" ? "Marked as full" : "Mark tank as full"}
+      </button>
+    </div>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 8,
+  padding: "8px 10px",
+  color: "white",
+  fontSize: 14,
+  fontFamily: "var(--font-geist-mono), monospace",
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+function FuelCard({
+  logs = [],
+  tankCapacityL,
+}: {
+  logs?: FuelLogEntry[];
+  tankCapacityL?: number | null;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState<"idle" | "loading" | "done">("idle");
+  const [litres, setLitres] = useState("");
+  const [pricePerL, setPricePerL] = useState("");
+  const [distanceKm, setDistanceKm] = useState("");
+  const [isFull, setIsFull] = useState(false);
+
+  async function handleSave() {
+    const l = parseFloat(litres);
+    if (!isFinite(l) || l <= 0) return;
+    setSaving("loading");
+    try {
+      const res = await fetch("/api/fuel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          litres: l,
+          isFull,
+          pricePerL: pricePerL ? parseFloat(pricePerL) : undefined,
+          distanceKm: distanceKm ? parseFloat(distanceKm) : undefined,
+          filledAt: new Date().toISOString(),
+        }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setSaving("done");
+        setOpen(false);
+        setLitres("");
+        setPricePerL("");
+        setDistanceKm("");
+        setIsFull(false);
+        router.refresh();
+        setTimeout(() => setSaving("idle"), 2500);
+      } else {
+        setSaving("idle");
+      }
+    } catch {
+      setSaving("idle");
+    }
+  }
+
+  const lastFill = logs[0] ?? null;
+  const chronological = [...logs].reverse();
+
+  const economyReadings = logs
+    .filter((l) => (l.gpsDistanceKm ?? l.distanceKm) != null && l.litres > 0)
+    .map((l) => {
+      const dist = (l.gpsDistanceKm ?? l.distanceKm)!;
+      return (l.litres / dist) * 100;
+    });
+  const avgL100km =
+    economyReadings.length
+      ? economyReadings.reduce((s, v) => s + v, 0) / economyReadings.length
+      : null;
+
+  const litresData = chronological.map((l) => l.litres);
+  const fuelColor = "#f97316";
+
+  const dateLabels = [
+    chronological[0],
+    chronological[Math.floor(chronological.length / 2)],
+    chronological[chronological.length - 1],
+  ]
+    .filter(Boolean)
+    .map((l) =>
+      new Date(l!.filledAt).toLocaleDateString([], { day: "numeric", month: "short" })
+    );
+
+  const stats = [
+    {
+      label: "Avg Economy",
+      value: avgL100km != null ? avgL100km.toFixed(1) : "—",
+      unit: avgL100km != null ? "L/100km" : "",
+      color: "#34d399",
+    },
+    {
+      label: "Total Fills",
+      value: logs.length.toString(),
+      unit: "",
+      color: "#60a5fa",
+    },
+    ...(tankCapacityL != null
+      ? [{ label: "Tank", value: tankCapacityL.toFixed(0), unit: "L", color: "#a78bfa" }]
+      : []),
+  ];
+
+  return (
+    <div style={{ padding: "20px 20px 16px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 18,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.4)",
+              marginBottom: 4,
+            }}
+          >
+            Last Fill
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span
+              style={{
+                fontSize: 42,
+                fontWeight: 800,
+                color: fuelColor,
+                fontFamily: "var(--font-geist-mono), monospace",
+                lineHeight: 1,
+                filter: `drop-shadow(0 0 12px ${fuelColor}88)`,
+              }}
+            >
+              {lastFill ? lastFill.litres.toFixed(1) : "—"}
+            </span>
+            <span
+              style={{
+                fontSize: 18,
+                color: "rgba(255,255,255,0.4)",
+                fontFamily: "var(--font-geist-mono), monospace",
+              }}
+            >
+              L
+            </span>
+          </div>
+          {lastFill && (
+            <div
+              style={{
+                fontSize: 11,
+                color: "rgba(255,255,255,0.3)",
+                marginTop: 4,
+                fontFamily: "var(--font-geist-mono), monospace",
+              }}
+            >
+              {new Date(lastFill.filledAt).toLocaleDateString([], {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+              })}
+            </div>
+          )}
+        </div>
+        {lastFill?.pricePerL != null && (
+          <div style={{ textAlign: "right" }}>
+            <div
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.3)",
+                marginBottom: 4,
+              }}
+            >
+              $/L
+            </div>
+            <div
+              style={{
+                fontSize: 28,
+                fontWeight: 700,
+                color: fuelColor,
+                fontFamily: "var(--font-geist-mono), monospace",
+              }}
+            >
+              {lastFill.pricePerL.toFixed(2)}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${stats.length}, 1fr)`,
+          gap: 10,
+          marginBottom: 18,
+        }}
+      >
+        {stats.map(({ label, value, unit, color }) => (
+          <div
+            key={label}
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              borderRadius: 10,
+              padding: "10px 12px",
+              border: "1px solid rgba(255,255,255,0.07)",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.35)",
+                marginBottom: 4,
+              }}
+            >
+              {label}
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 3, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  fontSize: 20,
+                  fontWeight: 700,
+                  color,
+                  fontFamily: "var(--font-geist-mono), monospace",
+                }}
+              >
+                {value}
+              </span>
+              {unit && (
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "rgba(255,255,255,0.3)",
+                    fontFamily: "var(--font-geist-mono), monospace",
+                  }}
+                >
+                  {unit}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginBottom: 18 }}>
+        <div
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.3)",
+            marginBottom: 8,
+          }}
+        >
+          Fill History
+        </div>
+        <div style={{ borderRadius: 8, overflow: "hidden" }}>
+          <BarChart data={litresData} color={fuelColor} height={64} />
+        </div>
+        {litresData.length > 0 ? (
+          <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 6 }}>
+            {dateLabels.map((label, i) => (
+              <span
+                key={i}
+                style={{
+                  fontSize: 9,
+                  color: "rgba(255,255,255,0.2)",
+                  fontFamily: "var(--font-geist-mono), monospace",
+                }}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div
+            style={{
+              textAlign: "center",
+              fontSize: 11,
+              color: "rgba(255,255,255,0.2)",
+              padding: "16px 0",
+              fontFamily: "var(--font-geist-mono), monospace",
+            }}
+          >
+            No fill data
+          </div>
+        )}
+      </div>
+
+      {/* Log fill form */}
+      {open ? (
+        <div
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 12,
+            padding: "14px 14px 12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.35)",
+              marginBottom: 2,
+            }}
+          >
+            Log Fill
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 10,
+                  color: "rgba(255,255,255,0.3)",
+                  marginBottom: 4,
+                  fontFamily: "var(--font-geist-mono), monospace",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                Litres *
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                placeholder="65.0"
+                value={litres}
+                onChange={(e) => setLitres(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 10,
+                  color: "rgba(255,255,255,0.3)",
+                  marginBottom: 4,
+                  fontFamily: "var(--font-geist-mono), monospace",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                $/Litre
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                placeholder="2.19"
+                value={pricePerL}
+                onChange={(e) => setPricePerL(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label
+              style={{
+                display: "block",
+                fontSize: 10,
+                color: "rgba(255,255,255,0.3)",
+                marginBottom: 4,
+                fontFamily: "var(--font-geist-mono), monospace",
+                letterSpacing: "0.08em",
+              }}
+            >
+              Distance since last fill (km)
+            </label>
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="420"
+              value={distanceKm}
+              onChange={(e) => setDistanceKm(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+
+          <button
+            onClick={() => setIsFull((v) => !v)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+            }}
+          >
+            <div
+              style={{
+                width: 36,
+                height: 20,
+                borderRadius: 10,
+                background: isFull ? fuelColor : "rgba(255,255,255,0.1)",
+                position: "relative",
+                transition: "background 0.2s ease",
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: 2,
+                  left: isFull ? 18 : 2,
+                  width: 16,
+                  height: 16,
+                  borderRadius: 8,
+                  background: "white",
+                  transition: "left 0.2s ease",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.4)",
+                }}
+              />
+            </div>
+            <span
+              style={{
+                fontSize: 11,
+                color: isFull ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)",
+                fontFamily: "var(--font-geist-mono), monospace",
+                letterSpacing: "0.06em",
+                transition: "color 0.2s ease",
+              }}
+            >
+              Filled to full
+            </span>
+          </button>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+            <button
+              onClick={() => { setOpen(false); setLitres(""); setPricePerL(""); setDistanceKm(""); setIsFull(false); }}
+              style={{
+                flex: 1,
+                padding: "8px",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.07)",
+                borderRadius: 8,
+                color: "rgba(255,255,255,0.3)",
+                fontSize: 11,
+                cursor: "pointer",
+                fontFamily: "var(--font-geist-mono), monospace",
+                letterSpacing: "0.08em",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving === "loading" || !litres}
+              style={{
+                flex: 2,
+                padding: "8px",
+                background: saving === "done" ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.12)",
+                border: `1px solid ${fuelColor}44`,
+                borderRadius: 8,
+                color: saving === "done" ? fuelColor : "rgba(249,115,22,0.8)",
+                fontSize: 11,
+                cursor: saving === "loading" || !litres ? "default" : "pointer",
+                fontFamily: "var(--font-geist-mono), monospace",
+                letterSpacing: "0.08em",
+                fontWeight: 600,
+                transition: "all 0.2s ease",
+              }}
+            >
+              {saving === "loading" ? "Saving…" : saving === "done" ? "Saved!" : "Save Fill"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          style={{
+            width: "100%",
+            padding: "8px 12px",
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.07)",
+            borderRadius: 8,
+            color: saving === "done" ? `${fuelColor}99` : "rgba(255,255,255,0.22)",
+            fontSize: 10,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            cursor: "pointer",
+            fontFamily: "var(--font-geist-mono), monospace",
+            transition: "color 0.2s ease",
+          }}
+        >
+          {saving === "done" ? "Fill logged" : "Log fill"}
+        </button>
+      )}
     </div>
   );
 }
@@ -998,6 +1800,7 @@ const NAV_CARDS = [
   { id: "temps", label: "Temps", Icon: Thermometer },
   { id: "gps", label: "GPS", Icon: MapPin },
   { id: "water", label: "Water", Icon: Droplets },
+  { id: "fuel", label: "Fuel", Icon: Fuel },
 ] as const;
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -1010,6 +1813,10 @@ export function SwipeDashboard({
   waterRemainingPct,
   waterTankL = 45,
   waterDailyUsage = [],
+  batteryHourly = [],
+  fuelLogs = [],
+  fuelTankCapacityL,
+  gpsHistory = [],
 }: SwipeDashboardProps) {
   const [activeCard, setActiveCard] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -1157,7 +1964,7 @@ export function SwipeDashboard({
         <div className="dashboard-grid">
           <div style={desktopCardStyle}>
             {desktopCardHeader(Zap, "Battery")}
-            <BatteryCard history={history} latest={latest} />
+            <BatteryCard history={history} latest={latest} hourlyData={batteryHourly} />
           </div>
           <div style={desktopCardStyle}>
             {desktopCardHeader(Thermometer, "Temperature")}
@@ -1165,7 +1972,7 @@ export function SwipeDashboard({
           </div>
           <div style={desktopCardStyle}>
             {desktopCardHeader(MapPin, "GPS & Travel")}
-            <GpsCard history={history} />
+            <GpsCard history={history} gpsHistory={gpsHistory} />
           </div>
           <div style={desktopCardStyle}>
             {desktopCardHeader(Droplets, "Water Tank")}
@@ -1175,6 +1982,10 @@ export function SwipeDashboard({
               tankL={waterTankL}
               dailyUsage={waterDailyUsage}
             />
+          </div>
+          <div style={desktopCardStyle}>
+            {desktopCardHeader(Fuel, "Fuel")}
+            <FuelCard logs={fuelLogs} tankCapacityL={fuelTankCapacityL} />
           </div>
         </div>
       </div>
@@ -1269,13 +2080,13 @@ export function SwipeDashboard({
               willChange: "transform",
             }}>
               <div style={{ minWidth: "100%", minHeight: 460 }}>
-                <BatteryCard history={history} latest={latest} />
+                <BatteryCard history={history} latest={latest} hourlyData={batteryHourly} />
               </div>
               <div style={{ minWidth: "100%", minHeight: 460 }}>
                 <TempCard history={history} latest={latest} />
               </div>
               <div style={{ minWidth: "100%", minHeight: 460 }}>
-                <GpsCard history={history} />
+                <GpsCard history={history} gpsHistory={gpsHistory} />
               </div>
               <div style={{ minWidth: "100%", minHeight: 460 }}>
                 <WaterCard
@@ -1284,6 +2095,9 @@ export function SwipeDashboard({
                   tankL={waterTankL}
                   dailyUsage={waterDailyUsage}
                 />
+              </div>
+              <div style={{ minWidth: "100%", minHeight: 460 }}>
+                <FuelCard logs={fuelLogs} tankCapacityL={fuelTankCapacityL} />
               </div>
             </div>
           </div>

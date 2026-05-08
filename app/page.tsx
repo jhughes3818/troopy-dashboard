@@ -5,6 +5,7 @@ import { AutoRefresh } from "@/app/components/auto-refresh";
 import { SwipeDashboard } from "@/app/components/swipe-dashboard";
 
 const RAW_WINDOW_MS = 24 * 60 * 60 * 1000;
+const GPS_HISTORY_DAYS = 7;
 const WATER_TANK_L = 45;
 const MOTION_THRESHOLD_KMPH = 5;
 
@@ -90,6 +91,64 @@ const fetchWaterEstimate = unstable_cache(
   { revalidate: 300, tags: ["water-estimate"] },
 );
 
+const fetchBatteryHourly = unstable_cache(
+  async () => {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const rows = await prisma.telemetryHourly.findMany({
+      where: { hourBucket: { gte: oneDayAgo } },
+      orderBy: { hourBucket: "asc" },
+      select: { hourBucket: true, current: true },
+    });
+    return rows.map((r) => ({
+      hourBucket: r.hourBucket.getTime(),
+      current: r.current,
+    }));
+  },
+  ["battery-hourly"],
+  { revalidate: 300 },
+);
+
+const fetchFuelData = unstable_cache(
+  async () => {
+    const [logs, profile] = await Promise.all([
+      prisma.fuelLog.findMany({ orderBy: { filledAt: "desc" }, take: 20 }),
+      prisma.vehicleProfile.findFirst(),
+    ]);
+    return {
+      logs: logs.map((l) => ({
+        id: l.id,
+        filledAt: l.filledAt.getTime(),
+        litres: l.litres,
+        isFull: l.isFull,
+        distanceKm: l.distanceKm,
+        gpsDistanceKm: l.gpsDistanceKm,
+        pricePerL: l.pricePerL,
+        notes: l.notes,
+      })),
+      tankCapacityL: profile?.tankCapacityL ?? null,
+    };
+  },
+  ["fuel-data"],
+  { revalidate: 300 },
+);
+
+const fetchGpsHistory = unstable_cache(
+  async () => {
+    const cutoffMs = BigInt(Date.now() - GPS_HISTORY_DAYS * 24 * 60 * 60 * 1000);
+    const rows = await prisma.telemetryReading.findMany({
+      where: { timestampMs: { gte: cutoffMs } },
+      orderBy: { timestampMs: "asc" },
+      select: { timestampMs: true, gpsSpeedKmph: true },
+    });
+    return rows.map((r) => ({
+      timestampMs: Number(r.timestampMs),
+      gpsSpeedKmph: r.gpsSpeedKmph,
+    }));
+  },
+  ["gps-history"],
+  { revalidate: 300 },
+);
+
 const fetchWaterHourly = unstable_cache(
   async () => {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -128,10 +187,13 @@ function computeWaterDailyUsage(
 }
 
 export default async function Home() {
-  const [rawReadings, waterEstimate, waterHourly] = await Promise.all([
+  const [rawReadings, waterEstimate, waterHourly, batteryHourly, fuelData, gpsHistory] = await Promise.all([
     fetchRawReadings(),
     fetchWaterEstimate(),
     fetchWaterHourly(),
+    fetchBatteryHourly(),
+    fetchFuelData(),
+    fetchGpsHistory(),
   ]);
 
   const latest = rawReadings[0] ?? null;
@@ -148,6 +210,10 @@ export default async function Home() {
         waterRemainingPct={waterEstimate?.remainingPct ?? null}
         waterTankL={WATER_TANK_L}
         waterDailyUsage={waterDailyUsage}
+        batteryHourly={batteryHourly}
+        fuelLogs={fuelData.logs}
+        fuelTankCapacityL={fuelData.tankCapacityL}
+        gpsHistory={gpsHistory}
       />
     </main>
   );
