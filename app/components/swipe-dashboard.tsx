@@ -2,10 +2,22 @@
 
 import { useState, useRef, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Zap, Thermometer, MapPin, Home, Sun, Snowflake, Droplets, Fuel, Clock } from "lucide-react";
+import {
+  Zap,
+  Thermometer,
+  MapPin,
+  Home,
+  Sun,
+  Snowflake,
+  Droplets,
+  Fuel,
+  Clock,
+  Wind,
+} from "lucide-react";
 
 const SIX_H = 6 * 60 * 60 * 1000;
 const MOTION_THRESHOLD = 5; // km/h
+const SIGNIFICANT_WIND_THRESHOLD = 15; // km/h
 
 type ReadingRow = {
   timestampMs: number;
@@ -18,6 +30,7 @@ type ReadingRow = {
   outsideTemperature: number | null;
   fridgeTemperature: number | null;
   gpsSpeedKmph: number | null;
+  gpsCourseDeg?: number | null;
 };
 
 type BatteryHourRow = { hourBucket: number; current: number | null };
@@ -33,7 +46,20 @@ type FuelLogEntry = {
   notes: string | null;
 };
 
-type GpsRow = { timestampMs: number; gpsSpeedKmph: number | null };
+type GpsRow = {
+  timestampMs: number;
+  gpsSpeedKmph: number | null;
+  gpsCourseDeg?: number | null;
+};
+
+type WeatherRow = {
+  id: string;
+  sourceTimestampMs: string | null;
+  fetchedAt: string;
+  windSpeedKmh: number | null;
+  windDirectionDeg: number | null;
+  windGustKmh: number | null;
+};
 
 interface SwipeDashboardProps {
   readings: ReadingRow[];
@@ -145,7 +171,7 @@ function MiniGauge({
 
 function formatTTG(
   ttgDays: number | null | undefined,
-  current: number | null | undefined
+  current: number | null | undefined,
 ): string {
   if (ttgDays == null) return "—";
   if (current != null && current > 0) return "Charging";
@@ -204,7 +230,9 @@ function AmpHoursBarChart({ data }: { data: BatteryHourRow[] }) {
       >
         Amp-Hours / Hour (24h)
       </div>
-      <div style={{ borderRadius: 8, overflow: "hidden", position: "relative" }}>
+      <div
+        style={{ borderRadius: 8, overflow: "hidden", position: "relative" }}
+      >
         <svg
           viewBox={`0 0 ${w} ${h}`}
           style={{ width: "100%", height: h, display: "block" }}
@@ -212,7 +240,10 @@ function AmpHoursBarChart({ data }: { data: BatteryHourRow[] }) {
         >
           {/* baseline */}
           <line
-            x1={0} y1={midY} x2={w} y2={midY}
+            x1={0}
+            y1={midY}
+            x2={w}
+            y2={midY}
             stroke="rgba(255,255,255,0.1)"
             strokeWidth={0.5}
           />
@@ -283,8 +314,7 @@ function BatteryCard({
   const curMax = curData.length ? Math.max(...curData) + 0.2 : 1;
   const timeLabels = makeTimeLabels(history);
   const soc = latest.soc ?? 0;
-  const socColor =
-    soc > 50 ? "#4ade80" : soc > 25 ? "#f59e0b" : "#ef4444";
+  const socColor = soc > 50 ? "#4ade80" : soc > 25 ? "#f59e0b" : "#ef4444";
   const voltage = latest.voltage;
   const current = latest.current;
   const power =
@@ -436,10 +466,22 @@ function BatteryCard({
           6hr Current
         </div>
         <div style={{ borderRadius: 8, overflow: "hidden" }}>
-          <Sparkline data={curData} color="#a78bfa" min={curMin} max={curMax} height={52} />
+          <Sparkline
+            data={curData}
+            color="#a78bfa"
+            min={curMin}
+            max={curMax}
+            height={52}
+          />
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 2 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          paddingTop: 2,
+        }}
+      >
         {timeLabels.map((t, i) => (
           <span
             key={i}
@@ -554,7 +596,9 @@ function TempCard({
                     {label}
                   </span>
                 </div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+                <div
+                  style={{ display: "flex", alignItems: "baseline", gap: 2 }}
+                >
                   <span
                     style={{
                       fontSize: 28,
@@ -578,13 +622,39 @@ function TempCard({
                 </div>
               </div>
               <div style={{ position: "relative" }}>
-                <Sparkline data={data} color={color} min={minV} max={maxV} height={36} />
+                <Sparkline
+                  data={data}
+                  color={color}
+                  min={minV}
+                  max={maxV}
+                  height={36}
+                />
                 {data.length > 0 && (
                   <>
-                    <span style={{ position: "absolute", top: 0, left: 0, fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-geist-mono), monospace", lineHeight: 1 }}>
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        fontSize: 9,
+                        color: "rgba(255,255,255,0.3)",
+                        fontFamily: "var(--font-geist-mono), monospace",
+                        lineHeight: 1,
+                      }}
+                    >
                       {Math.max(...data).toFixed(1)}°
                     </span>
-                    <span style={{ position: "absolute", bottom: 0, left: 0, fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-geist-mono), monospace", lineHeight: 1 }}>
+                    <span
+                      style={{
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        fontSize: 9,
+                        color: "rgba(255,255,255,0.3)",
+                        fontFamily: "var(--font-geist-mono), monospace",
+                        lineHeight: 1,
+                      }}
+                    >
                       {Math.min(...data).toFixed(1)}°
                     </span>
                   </>
@@ -624,12 +694,81 @@ function localDateKey(ms: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function circularDiffDeg(a: number, b: number): number {
+  return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+function nearestWeatherForTimestamp(
+  weather: WeatherRow[],
+  timestampMs: number,
+): WeatherRow | null {
+  if (!weather.length) return null;
+
+  let nearest: WeatherRow | null = null;
+  let nearestDiff = Infinity;
+
+  for (const row of weather) {
+    const weatherMs =
+      row.sourceTimestampMs != null
+        ? Number(row.sourceTimestampMs)
+        : Date.parse(row.fetchedAt);
+    if (!Number.isFinite(weatherMs)) continue;
+
+    const diff = Math.abs(weatherMs - timestampMs);
+    if (diff < nearestDiff) {
+      nearest = row;
+      nearestDiff = diff;
+    }
+  }
+
+  return nearestDiff <= 45 * 60 * 1000 ? nearest : null;
+}
+
+function classifyWindRelativeToTravel(
+  windDirectionDeg: number | null | undefined,
+  vehicleCourseDeg: number | null | undefined,
+  windSpeedKmh: number | null | undefined,
+): "headwind" | "tailwind" | "crosswind" | null {
+  if (
+    windDirectionDeg == null ||
+    vehicleCourseDeg == null ||
+    windSpeedKmh == null
+  ) {
+    return null;
+  }
+
+  if (
+    !Number.isFinite(windDirectionDeg) ||
+    !Number.isFinite(vehicleCourseDeg) ||
+    !Number.isFinite(windSpeedKmh)
+  ) {
+    return null;
+  }
+
+  if (windSpeedKmh < SIGNIFICANT_WIND_THRESHOLD) {
+    return null;
+  }
+
+  const headwindDiff = circularDiffDeg(windDirectionDeg, vehicleCourseDeg);
+  if (headwindDiff <= 30) return "headwind";
+
+  const tailwindDiff = circularDiffDeg(
+    windDirectionDeg,
+    (vehicleCourseDeg + 180) % 360,
+  );
+  if (tailwindDiff <= 30) return "tailwind";
+
+  return "crosswind";
+}
+
 function GpsCard({
   history,
   gpsHistory = [],
+  deviceId,
 }: {
   history: ReadingRow[];
   gpsHistory?: GpsRow[];
+  deviceId?: string | null;
 }) {
   const days = useMemo(() => {
     if (!gpsHistory.length) return [];
@@ -650,6 +789,53 @@ function GpsCard({
     setDayIndex(Math.max(0, days.length - 1));
   }, [days.length]);
 
+  const [weatherRows, setWeatherRows] = useState<WeatherRow[]>([]);
+
+  useEffect(() => {
+    const rows = gpsHistory.length ? gpsHistory : history;
+    if (!rows.length) {
+      setWeatherRows([]);
+      return;
+    }
+
+    const sortedRows = [...rows].sort((a, b) => a.timestampMs - b.timestampMs);
+    const cacheBucketMs = 60 * 60 * 1000;
+    const from =
+      Math.floor((sortedRows[0].timestampMs - 60 * 60 * 1000) / cacheBucketMs) *
+      cacheBucketMs;
+    const to =
+      Math.ceil(
+        (sortedRows[sortedRows.length - 1].timestampMs + 60 * 60 * 1000) /
+          cacheBucketMs,
+      ) * cacheBucketMs;
+    const params = new URLSearchParams({
+      deviceId: deviceId ?? "troopy-smartshunt",
+      from: String(from),
+      to: String(to),
+    });
+
+    let cancelled = false;
+
+    fetch(`/api/weather?${params.toString()}`)
+      .then((res) =>
+        res.ok
+          ? res.json()
+          : Promise.reject(new Error(`Weather request failed: ${res.status}`)),
+      )
+      .then((json) => {
+        if (!cancelled && Array.isArray(json.readings)) {
+          setWeatherRows(json.readings);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setWeatherRows([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deviceId, gpsHistory, history]);
+
   const hasDays = days.length > 0;
   const activeIndex = Math.min(dayIndex, Math.max(0, days.length - 1));
   const selectedDay = hasDays ? days[activeIndex] : null;
@@ -657,6 +843,17 @@ function GpsCard({
   const rowsForStats = hasDays ? activeRows : history;
 
   const speedData = rowsForStats.map((r) => r.gpsSpeedKmph ?? 0);
+  const windStates = rowsForStats.map((row) => {
+    const nearestWeather = nearestWeatherForTimestamp(
+      weatherRows,
+      row.timestampMs,
+    );
+    return classifyWindRelativeToTravel(
+      nearestWeather?.windDirectionDeg,
+      row.gpsCourseDeg,
+      nearestWeather?.windSpeedKmh,
+    );
+  });
   const timeLabels = makeTimeLabels(rowsForStats);
 
   let distanceKm = 0;
@@ -665,7 +862,9 @@ function GpsCard({
 
   for (let i = 1; i < rowsForStats.length; i++) {
     const speed = rowsForStats[i].gpsSpeedKmph ?? 0;
-    const dt = (rowsForStats[i].timestampMs - rowsForStats[i - 1].timestampMs) / 3_600_000;
+    const dt =
+      (rowsForStats[i].timestampMs - rowsForStats[i - 1].timestampMs) /
+      3_600_000;
     if (speed > MOTION_THRESHOLD) {
       distanceKm += speed * dt;
       movingMs += rowsForStats[i].timestampMs - rowsForStats[i - 1].timestampMs;
@@ -690,10 +889,97 @@ function GpsCard({
   });
   if (inMove) segments.push({ start: segStart, end: speedData.length });
 
+  const windSegments: {
+    start: number;
+    end: number;
+    state: "headwind" | "tailwind" | "crosswind";
+  }[] = [];
+  let activeWindState: "headwind" | "tailwind" | "crosswind" | null = null;
+  let windSegStart = 0;
+
+  windStates.forEach((state, i) => {
+    const speed = speedData[i] ?? 0;
+    const effectiveState = speed > MOTION_THRESHOLD ? state : null;
+
+    if (effectiveState !== activeWindState) {
+      if (activeWindState != null) {
+        windSegments.push({
+          start: windSegStart,
+          end: i,
+          state: activeWindState,
+        });
+      }
+      activeWindState = effectiveState;
+      windSegStart = i;
+    }
+  });
+
+  if (activeWindState != null) {
+    windSegments.push({
+      start: windSegStart,
+      end: windStates.length,
+      state: activeWindState,
+    });
+  }
+
+  const headwindMins = windSegments
+    .filter((segment) => segment.state === "headwind")
+    .reduce((total, segment) => {
+      const start = rowsForStats[segment.start]?.timestampMs;
+      const end =
+        rowsForStats[Math.min(segment.end, rowsForStats.length - 1)]
+          ?.timestampMs;
+      return start != null && end != null
+        ? total + Math.max(0, end - start) / 60_000
+        : total;
+    }, 0);
+
+  const tailwindMins = windSegments
+    .filter((segment) => segment.state === "tailwind")
+    .reduce((total, segment) => {
+      const start = rowsForStats[segment.start]?.timestampMs;
+      const end =
+        rowsForStats[Math.min(segment.end, rowsForStats.length - 1)]
+          ?.timestampMs;
+      return start != null && end != null
+        ? total + Math.max(0, end - start) / 60_000
+        : total;
+    }, 0);
+
   const stats = [
-    { label: "Distance", value: distanceKm.toFixed(1), unit: "km", color: "#34d399" },
-    { label: "Max Speed", value: Math.round(maxSpeedKmph).toString(), unit: "km/h", color: "#60a5fa" },
-    { label: "Moving", value: Math.round(movingMins).toString(), unit: "min", color: "#a78bfa" },
+    {
+      label: "Distance",
+      value: distanceKm.toFixed(1),
+      unit: "km",
+      color: "#34d399",
+    },
+    {
+      label: "Max Speed",
+      value: Math.round(maxSpeedKmph).toString(),
+      unit: "km/h",
+      color: "#60a5fa",
+    },
+    {
+      label: "Moving",
+      value: Math.round(movingMins).toString(),
+      unit: "min",
+      color: "#a78bfa",
+    },
+  ];
+
+  const windStats = [
+    {
+      label: "Headwind",
+      value: Math.round(headwindMins).toString(),
+      unit: "min",
+      color: "#f87171",
+    },
+    {
+      label: "Tailwind",
+      value: Math.round(tailwindMins).toString(),
+      unit: "min",
+      color: "#34d399",
+    },
   ];
 
   function dayLabel(date: string): string {
@@ -966,6 +1252,163 @@ function GpsCard({
           ))}
         </div>
       </div>
+
+      <div
+        style={{
+          background: "rgba(255,255,255,0.04)",
+          borderRadius: 12,
+          padding: "12px 14px",
+          border: "1px solid rgba(255,255,255,0.07)",
+          marginTop: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <Wind size={13} color="rgba(255,255,255,0.35)" />
+            <span
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.3)",
+              }}
+            >
+              Wind Timeline
+            </span>
+          </div>
+          <span
+            style={{
+              fontSize: 9,
+              color: "rgba(255,255,255,0.22)",
+              fontFamily: "var(--font-geist-mono), monospace",
+            }}
+          >
+            ±30° / 30+ km/h
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 8,
+            marginBottom: 10,
+          }}
+        >
+          {windStats.map(({ label, value, unit, color }) => (
+            <div
+              key={label}
+              style={{
+                background: "rgba(255,255,255,0.035)",
+                borderRadius: 8,
+                padding: "8px 10px",
+                border: `1px solid ${color}22`,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 9,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,0.3)",
+                  marginBottom: 3,
+                }}
+              >
+                {label}
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
+                <span
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color,
+                    fontFamily: "var(--font-geist-mono), monospace",
+                  }}
+                >
+                  {value}
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "rgba(255,255,255,0.3)",
+                    fontFamily: "var(--font-geist-mono), monospace",
+                  }}
+                >
+                  {unit}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div
+          style={{
+            position: "relative",
+            height: 10,
+            background: "rgba(255,255,255,0.06)",
+            borderRadius: 5,
+            overflow: "hidden",
+          }}
+        >
+          {windStates.length > 0 &&
+            windSegments.map(({ start, end, state }, i) => {
+              const color =
+                state === "headwind"
+                  ? "#f87171"
+                  : state === "tailwind"
+                    ? "#34d399"
+                    : "#60a5fa";
+              return (
+                <div
+                  key={i}
+                  style={{
+                    position: "absolute",
+                    left: `${(start / windStates.length) * 100}%`,
+                    width: `${((end - start) / windStates.length) * 100}%`,
+                    height: "100%",
+                    background: color,
+                    opacity: 0.85,
+                    borderRadius: 5,
+                  }}
+                />
+              );
+            })}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginTop: 6,
+          }}
+        >
+          {(["headwind", "crosswind", "tailwind"] as const).map((label) => (
+            <span
+              key={label}
+              style={{
+                fontSize: 9,
+                color:
+                  label === "headwind"
+                    ? "#f8717188"
+                    : label === "tailwind"
+                      ? "#34d39988"
+                      : "#60a5fa88",
+                fontFamily: "var(--font-geist-mono), monospace",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+              }}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1050,8 +1493,7 @@ function WaterCard({
   }
 
   const pct = remainingPct ?? 0;
-  const waterColor =
-    pct > 50 ? "#38bdf8" : pct > 20 ? "#fbbf24" : "#ef4444";
+  const waterColor = pct > 50 ? "#38bdf8" : pct > 20 ? "#fbbf24" : "#ef4444";
 
   const usedValues = dailyUsage.map((d) => d.usedL);
   const todayUtc = new Date().toISOString().slice(0, 10);
@@ -1281,7 +1723,11 @@ function WaterCard({
           transition: "color 0.2s ease, border-color 0.2s ease",
         }}
       >
-        {marking === "loading" ? "Saving…" : marking === "done" ? "Marked as full" : "Mark tank as full"}
+        {marking === "loading"
+          ? "Saving…"
+          : marking === "done"
+            ? "Marked as full"
+            : "Mark tank as full"}
       </button>
     </div>
   );
@@ -1358,10 +1804,9 @@ function FuelCard({
       const dist = (l.gpsDistanceKm ?? l.distanceKm)!;
       return (l.litres / dist) * 100;
     });
-  const avgL100km =
-    economyReadings.length
-      ? economyReadings.reduce((s, v) => s + v, 0) / economyReadings.length
-      : null;
+  const avgL100km = economyReadings.length
+    ? economyReadings.reduce((s, v) => s + v, 0) / economyReadings.length
+    : null;
 
   const litresData = chronological.map((l) => l.litres);
   const fuelColor = "#f97316";
@@ -1373,7 +1818,10 @@ function FuelCard({
   ]
     .filter(Boolean)
     .map((l) =>
-      new Date(l!.filledAt).toLocaleDateString([], { day: "numeric", month: "short" })
+      new Date(l!.filledAt).toLocaleDateString([], {
+        day: "numeric",
+        month: "short",
+      }),
     );
 
   const stats = [
@@ -1390,7 +1838,14 @@ function FuelCard({
       color: "#60a5fa",
     },
     ...(tankCapacityL != null
-      ? [{ label: "Tank", value: tankCapacityL.toFixed(0), unit: "L", color: "#a78bfa" }]
+      ? [
+          {
+            label: "Tank",
+            value: tankCapacityL.toFixed(0),
+            unit: "L",
+            color: "#a78bfa",
+          },
+        ]
       : []),
   ];
 
@@ -1512,7 +1967,14 @@ function FuelCard({
             >
               {label}
             </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 3, flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                gap: 3,
+                flexWrap: "wrap",
+              }}
+            >
               <span
                 style={{
                   fontSize: 20,
@@ -1555,7 +2017,13 @@ function FuelCard({
           <BarChart data={litresData} color={fuelColor} height={64} />
         </div>
         {litresData.length > 0 ? (
-          <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 6 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              paddingTop: 6,
+            }}
+          >
             {dateLabels.map((label, i) => (
               <span
                 key={i}
@@ -1609,7 +2077,9 @@ function FuelCard({
             Log Fill
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}
+          >
             <div>
               <label
                 style={{
@@ -1719,7 +2189,9 @@ function FuelCard({
             <span
               style={{
                 fontSize: 11,
-                color: isFull ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)",
+                color: isFull
+                  ? "rgba(255,255,255,0.7)"
+                  : "rgba(255,255,255,0.3)",
                 fontFamily: "var(--font-geist-mono), monospace",
                 letterSpacing: "0.06em",
                 transition: "color 0.2s ease",
@@ -1731,7 +2203,13 @@ function FuelCard({
 
           <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
             <button
-              onClick={() => { setOpen(false); setLitres(""); setPricePerL(""); setDistanceKm(""); setIsFull(false); }}
+              onClick={() => {
+                setOpen(false);
+                setLitres("");
+                setPricePerL("");
+                setDistanceKm("");
+                setIsFull(false);
+              }}
               style={{
                 flex: 1,
                 padding: "8px",
@@ -1753,7 +2231,10 @@ function FuelCard({
               style={{
                 flex: 2,
                 padding: "8px",
-                background: saving === "done" ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.12)",
+                background:
+                  saving === "done"
+                    ? "rgba(249,115,22,0.15)"
+                    : "rgba(249,115,22,0.12)",
                 border: `1px solid ${fuelColor}44`,
                 borderRadius: 8,
                 color: saving === "done" ? fuelColor : "rgba(249,115,22,0.8)",
@@ -1765,7 +2246,11 @@ function FuelCard({
                 transition: "all 0.2s ease",
               }}
             >
-              {saving === "loading" ? "Saving…" : saving === "done" ? "Saved!" : "Save Fill"}
+              {saving === "loading"
+                ? "Saving…"
+                : saving === "done"
+                  ? "Saved!"
+                  : "Save Fill"}
             </button>
           </div>
         </div>
@@ -1778,7 +2263,8 @@ function FuelCard({
             background: "rgba(255,255,255,0.03)",
             border: "1px solid rgba(255,255,255,0.07)",
             borderRadius: 8,
-            color: saving === "done" ? `${fuelColor}99` : "rgba(255,255,255,0.22)",
+            color:
+              saving === "done" ? `${fuelColor}99` : "rgba(255,255,255,0.22)",
             fontSize: 10,
             letterSpacing: "0.1em",
             textTransform: "uppercase",
@@ -1846,8 +2332,7 @@ export function SwipeDashboard({
     setDragging(false);
     if (dragOffset < -50 && activeCard < NAV_CARDS.length - 1)
       setActiveCard((c) => c + 1);
-    else if (dragOffset > 50 && activeCard > 0)
-      setActiveCard((c) => c - 1);
+    else if (dragOffset > 50 && activeCard > 0) setActiveCard((c) => c - 1);
     setDragOffset(0);
   };
 
@@ -1877,38 +2362,103 @@ export function SwipeDashboard({
   const headerStats = (
     <>
       <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
-        <span style={{ fontSize: 24, fontWeight: 800, color: socColor, fontFamily: "var(--font-geist-mono), monospace", lineHeight: 1 }}>
+        <span
+          style={{
+            fontSize: 24,
+            fontWeight: 800,
+            color: socColor,
+            fontFamily: "var(--font-geist-mono), monospace",
+            lineHeight: 1,
+          }}
+        >
           {Math.round(soc)}
         </span>
-        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", fontFamily: "var(--font-geist-mono), monospace" }}>%</span>
+        <span
+          style={{
+            fontSize: 12,
+            color: "rgba(255,255,255,0.35)",
+            fontFamily: "var(--font-geist-mono), monospace",
+          }}
+        >
+          %
+        </span>
       </div>
-      <div style={{ width: 1, height: 24, background: "rgba(255,255,255,0.1)" }} />
+      <div
+        style={{ width: 1, height: 24, background: "rgba(255,255,255,0.1)" }}
+      />
       <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
-        <span style={{ fontSize: 16, fontWeight: 600, color: "#a78bfa", fontFamily: "var(--font-geist-mono), monospace" }}>
+        <span
+          style={{
+            fontSize: 16,
+            fontWeight: 600,
+            color: "#a78bfa",
+            fontFamily: "var(--font-geist-mono), monospace",
+          }}
+        >
           {latest.current != null ? latest.current.toFixed(1) : "—"}
         </span>
-        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-geist-mono), monospace" }}>A</span>
+        <span
+          style={{
+            fontSize: 10,
+            color: "rgba(255,255,255,0.3)",
+            fontFamily: "var(--font-geist-mono), monospace",
+          }}
+        >
+          A
+        </span>
       </div>
-      <div style={{ width: 1, height: 24, background: "rgba(255,255,255,0.1)" }} />
+      <div
+        style={{ width: 1, height: 24, background: "rgba(255,255,255,0.1)" }}
+      />
       <div style={{ display: "flex", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
           <Home size={11} color="#f472b6" />
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#f472b6", fontFamily: "var(--font-geist-mono), monospace" }}>
-            {latest.insideTemperature != null ? `${latest.insideTemperature.toFixed(1)}°` : "—"}
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#f472b6",
+              fontFamily: "var(--font-geist-mono), monospace",
+            }}
+          >
+            {latest.insideTemperature != null
+              ? `${latest.insideTemperature.toFixed(1)}°`
+              : "—"}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
           <Sun size={11} color="#fbbf24" />
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#fbbf24", fontFamily: "var(--font-geist-mono), monospace" }}>
-            {latest.outsideTemperature != null ? `${latest.outsideTemperature.toFixed(1)}°` : "—"}
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#fbbf24",
+              fontFamily: "var(--font-geist-mono), monospace",
+            }}
+          >
+            {latest.outsideTemperature != null
+              ? `${latest.outsideTemperature.toFixed(1)}°`
+              : "—"}
           </span>
         </div>
       </div>
-      <div style={{ width: 1, height: 24, background: "rgba(255,255,255,0.1)" }} />
+      <div
+        style={{ width: 1, height: 24, background: "rgba(255,255,255,0.1)" }}
+      />
       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
         <Clock size={11} color="rgba(255,255,255,0.25)" />
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-geist-mono), monospace" }}>
-          {new Date(latest.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}
+        <span
+          style={{
+            fontSize: 11,
+            color: "rgba(255,255,255,0.3)",
+            fontFamily: "var(--font-geist-mono), monospace",
+          }}
+        >
+          {new Date(latest.timestampMs).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })}
         </span>
       </div>
     </>
@@ -1918,23 +2468,34 @@ export function SwipeDashboard({
     background: "rgba(255,255,255,0.03)",
     borderRadius: 24,
     border: "1px solid rgba(255,255,255,0.08)",
-    boxShadow: "0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)",
+    boxShadow:
+      "0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)",
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
   };
 
   const desktopCardHeader = (Icon: React.ElementType, label: string) => (
-    <div style={{
-      padding: "12px 20px",
-      borderBottom: "1px solid rgba(255,255,255,0.05)",
-      background: "rgba(10,10,15,0.6)",
-      display: "flex",
-      alignItems: "center",
-      gap: 8,
-    }}>
+    <div
+      style={{
+        padding: "12px 20px",
+        borderBottom: "1px solid rgba(255,255,255,0.05)",
+        background: "rgba(10,10,15,0.6)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
       <Icon size={13} color="rgba(255,255,255,0.35)" />
-      <span style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", fontFamily: "var(--font-geist-mono), monospace" }}>
+      <span
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: "rgba(255,255,255,0.35)",
+          fontFamily: "var(--font-geist-mono), monospace",
+        }}
+      >
         {label}
       </span>
     </div>
@@ -1945,26 +2506,47 @@ export function SwipeDashboard({
       {/* ── Desktop grid layout ──────────────────────────────────── */}
       <div
         className="dashboard-desktop"
-        style={{ flexDirection: "column", minHeight: "100vh", background: "#0a0a0f" }}
+        style={{
+          flexDirection: "column",
+          minHeight: "100vh",
+          background: "#0a0a0f",
+        }}
       >
         {/* Top header bar */}
-        <div style={{
-          padding: "12px 20px",
-          background: "rgba(10,10,15,0.95)",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
-          backdropFilter: "blur(20px)",
-          display: "flex",
-          alignItems: "center",
-          gap: 20,
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          flexShrink: 0,
-        }}>
-          <span style={{ fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(255,255,255,0.25)", fontFamily: "var(--font-geist-mono), monospace", marginRight: 4 }}>
+        <div
+          style={{
+            padding: "12px 20px",
+            background: "rgba(10,10,15,0.95)",
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            backdropFilter: "blur(20px)",
+            display: "flex",
+            alignItems: "center",
+            gap: 20,
+            position: "sticky",
+            top: 0,
+            zIndex: 10,
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.15em",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.25)",
+              fontFamily: "var(--font-geist-mono), monospace",
+              marginRight: 4,
+            }}
+          >
             {deviceId ?? "troopy-smartshunt"}
           </span>
-          <div style={{ width: 1, height: 24, background: "rgba(255,255,255,0.08)" }} />
+          <div
+            style={{
+              width: 1,
+              height: 24,
+              background: "rgba(255,255,255,0.08)",
+            }}
+          />
           {headerStats}
         </div>
 
@@ -1972,7 +2554,11 @@ export function SwipeDashboard({
         <div className="dashboard-grid">
           <div style={desktopCardStyle}>
             {desktopCardHeader(Zap, "Battery")}
-            <BatteryCard history={history} latest={latest} hourlyData={batteryHourly} />
+            <BatteryCard
+              history={history}
+              latest={latest}
+              hourlyData={batteryHourly}
+            />
           </div>
           <div style={desktopCardStyle}>
             {desktopCardHeader(Thermometer, "Temperature")}
@@ -1980,7 +2566,11 @@ export function SwipeDashboard({
           </div>
           <div style={desktopCardStyle}>
             {desktopCardHeader(MapPin, "GPS & Travel")}
-            <GpsCard history={history} gpsHistory={gpsHistory} />
+            <GpsCard
+              history={history}
+              gpsHistory={gpsHistory}
+              deviceId={deviceId}
+            />
           </div>
           <div style={desktopCardStyle}>
             {desktopCardHeader(Droplets, "Water Tank")}
@@ -2018,17 +2608,29 @@ export function SwipeDashboard({
             borderRadius: 32,
             overflow: "hidden",
             border: "1px solid rgba(255,255,255,0.08)",
-            boxShadow: "0 40px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08)",
+            boxShadow:
+              "0 40px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08)",
           }}
         >
           {/* Mobile header */}
-          <div style={{
-            padding: "16px 20px 12px",
-            background: "rgba(10,10,15,0.9)",
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
-            backdropFilter: "blur(20px)",
-          }}>
-            <div style={{ fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 8, fontFamily: "var(--font-geist-mono), monospace" }}>
+          <div
+            style={{
+              padding: "16px 20px 12px",
+              background: "rgba(10,10,15,0.9)",
+              borderBottom: "1px solid rgba(255,255,255,0.06)",
+              backdropFilter: "blur(20px)",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.15em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.3)",
+                marginBottom: 8,
+                fontFamily: "var(--font-geist-mono), monospace",
+              }}
+            >
               {deviceId ?? "troopy-smartshunt"}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -2037,7 +2639,15 @@ export function SwipeDashboard({
           </div>
 
           {/* Tab navigation */}
-          <div style={{ display: "flex", padding: "10px 16px", gap: 6, background: "rgba(10,10,15,0.7)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <div
+            style={{
+              display: "flex",
+              padding: "10px 16px",
+              gap: 6,
+              background: "rgba(10,10,15,0.7)",
+              borderBottom: "1px solid rgba(255,255,255,0.05)",
+            }}
+          >
             {NAV_CARDS.map((card, i) => {
               const active = activeCard === i;
               return (
@@ -2050,7 +2660,9 @@ export function SwipeDashboard({
                     borderRadius: 10,
                     border: "none",
                     cursor: "pointer",
-                    background: active ? "rgba(255,255,255,0.1)" : "transparent",
+                    background: active
+                      ? "rgba(255,255,255,0.1)"
+                      : "transparent",
                     color: active ? "white" : "rgba(255,255,255,0.35)",
                     fontSize: 11,
                     fontWeight: active ? 600 : 400,
@@ -2072,7 +2684,11 @@ export function SwipeDashboard({
 
           {/* Swipeable cards */}
           <div
-            style={{ overflow: "hidden", touchAction: "pan-y", userSelect: "none" }}
+            style={{
+              overflow: "hidden",
+              touchAction: "pan-y",
+              userSelect: "none",
+            }}
             onMouseDown={(e) => handlePointerDown(e.clientX)}
             onMouseMove={(e) => handlePointerMove(e.clientX)}
             onMouseUp={handlePointerUp}
@@ -2081,20 +2697,32 @@ export function SwipeDashboard({
             onTouchMove={(e) => handlePointerMove(e.touches[0].clientX)}
             onTouchEnd={handlePointerUp}
           >
-            <div style={{
-              display: "flex",
-              transform: `translateX(calc(${-activeCard * 100}% + ${dragOffset}px))`,
-              transition: dragging ? "none" : "transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)",
-              willChange: "transform",
-            }}>
+            <div
+              style={{
+                display: "flex",
+                transform: `translateX(calc(${-activeCard * 100}% + ${dragOffset}px))`,
+                transition: dragging
+                  ? "none"
+                  : "transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)",
+                willChange: "transform",
+              }}
+            >
               <div style={{ minWidth: "100%", minHeight: 460 }}>
-                <BatteryCard history={history} latest={latest} hourlyData={batteryHourly} />
+                <BatteryCard
+                  history={history}
+                  latest={latest}
+                  hourlyData={batteryHourly}
+                />
               </div>
               <div style={{ minWidth: "100%", minHeight: 460 }}>
                 <TempCard history={history} latest={latest} />
               </div>
               <div style={{ minWidth: "100%", minHeight: 460 }}>
-                <GpsCard history={history} gpsHistory={gpsHistory} />
+                <GpsCard
+                  history={history}
+                  gpsHistory={gpsHistory}
+                  deviceId={deviceId}
+                />
               </div>
               <div style={{ minWidth: "100%", minHeight: 460 }}>
                 <WaterCard
@@ -2111,7 +2739,15 @@ export function SwipeDashboard({
           </div>
 
           {/* Dot indicators */}
-          <div style={{ display: "flex", justifyContent: "center", gap: 6, padding: "12px 0 20px", background: "rgba(10,10,15,0.7)" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              gap: 6,
+              padding: "12px 0 20px",
+              background: "rgba(10,10,15,0.7)",
+            }}
+          >
             {NAV_CARDS.map((_, i) => (
               <button
                 key={i}
@@ -2122,7 +2758,10 @@ export function SwipeDashboard({
                   borderRadius: 3,
                   border: "none",
                   cursor: "pointer",
-                  background: activeCard === i ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)",
+                  background:
+                    activeCard === i
+                      ? "rgba(255,255,255,0.7)"
+                      : "rgba(255,255,255,0.2)",
                   transition: "all 0.3s ease",
                   padding: 0,
                 }}

@@ -69,6 +69,32 @@ model TelemetryHourly {
   @@index([deviceId, hourBucket(sort: Desc)])
 }
 
+model WeatherReading {
+  id                   String   @id @default(cuid())
+  deviceId             String
+
+  latitude             Float
+  longitude            Float
+
+  windSpeedKmh         Float?
+  windDirectionDeg     Float?
+  windGustKmh          Float?
+
+  temperatureC         Float?
+  apparentTemperatureC Float?
+  precipitationMm      Float?
+  cloudCoverPercent    Float?
+  pressureHpa          Float?
+
+  source               String?
+  sourceTimestampMs    BigInt?
+  fetchedAt            DateTime @default(now())
+
+  @@index([fetchedAt(sort: Desc)])
+  @@index([deviceId, fetchedAt(sort: Desc)])
+  @@index([deviceId, sourceTimestampMs(sort: Desc)])
+}
+
 model FuelLog {
   id               String   @id @default(cuid())
   filledAt         DateTime

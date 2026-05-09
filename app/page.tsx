@@ -20,7 +20,6 @@ const fetchRawReadings = unstable_cache(
       take: 2000,
       omit: {
         gpsAltitudeM: true,
-        gpsCourseDeg: true,
         gpsSatellites: true,
         gpsHdop: true,
         gpsFixAgeMs: true,
@@ -35,7 +34,9 @@ const fetchRawReadings = unstable_cache(
 
 const fetchWaterEstimate = unstable_cache(
   async (): Promise<{ remainingL: number; remainingPct: number } | null> => {
-    const lastFill = await prisma.waterLog.findFirst({ orderBy: { filledAt: "desc" } });
+    const lastFill = await prisma.waterLog.findFirst({
+      orderBy: { filledAt: "desc" },
+    });
     if (!lastFill) return null;
 
     if (lastFill.waterSnapshotMl !== null) {
@@ -43,7 +44,10 @@ const fetchWaterEstimate = unstable_cache(
         where: {
           timestampMs: { gte: BigInt(lastFill.filledAt.getTime()) },
           waterCumulativeMl: { not: null },
-          OR: [{ gpsSpeedKmph: null }, { gpsSpeedKmph: { lte: MOTION_THRESHOLD_KMPH } }],
+          OR: [
+            { gpsSpeedKmph: null },
+            { gpsSpeedKmph: { lte: MOTION_THRESHOLD_KMPH } },
+          ],
         },
         orderBy: { timestampMs: "desc" },
         select: { waterCumulativeMl: true },
@@ -51,7 +55,10 @@ const fetchWaterEstimate = unstable_cache(
 
       const waterUsedMl =
         latestStationary?.waterCumulativeMl != null
-          ? Math.max(0, latestStationary.waterCumulativeMl - lastFill.waterSnapshotMl)
+          ? Math.max(
+              0,
+              latestStationary.waterCumulativeMl - lastFill.waterSnapshotMl,
+            )
           : 0;
       const remainingL = Math.max(0, WATER_TANK_L - waterUsedMl / 1000);
       return { remainingL, remainingPct: (remainingL / WATER_TANK_L) * 100 };
@@ -134,15 +141,18 @@ const fetchFuelData = unstable_cache(
 
 const fetchGpsHistory = unstable_cache(
   async () => {
-    const cutoffMs = BigInt(Date.now() - GPS_HISTORY_DAYS * 24 * 60 * 60 * 1000);
+    const cutoffMs = BigInt(
+      Date.now() - GPS_HISTORY_DAYS * 24 * 60 * 60 * 1000,
+    );
     const rows = await prisma.telemetryReading.findMany({
       where: { timestampMs: { gte: cutoffMs } },
       orderBy: { timestampMs: "asc" },
-      select: { timestampMs: true, gpsSpeedKmph: true },
+      select: { timestampMs: true, gpsSpeedKmph: true, gpsCourseDeg: true },
     });
     return rows.map((r) => ({
       timestampMs: Number(r.timestampMs),
       gpsSpeedKmph: r.gpsSpeedKmph,
+      gpsCourseDeg: r.gpsCourseDeg,
     }));
   },
   ["gps-history"],
@@ -153,7 +163,10 @@ const fetchWaterHourly = unstable_cache(
   async () => {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const rows = await prisma.telemetryHourly.findMany({
-      where: { hourBucket: { gte: sevenDaysAgo }, waterCumulativeMl: { not: null } },
+      where: {
+        hourBucket: { gte: sevenDaysAgo },
+        waterCumulativeMl: { not: null },
+      },
       orderBy: { hourBucket: "asc" },
       select: { hourBucket: true, waterCumulativeMl: true },
     });
@@ -188,7 +201,14 @@ function computeWaterDailyUsage(
 }
 
 export default async function Home() {
-  const [rawReadings, waterEstimate, waterHourly, batteryHourly, fuelData, gpsHistory] = await Promise.all([
+  const [
+    rawReadings,
+    waterEstimate,
+    waterHourly,
+    batteryHourly,
+    fuelData,
+    gpsHistory,
+  ] = await Promise.all([
     fetchRawReadings(),
     fetchWaterEstimate(),
     fetchWaterHourly(),
