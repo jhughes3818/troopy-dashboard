@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useRef, useMemo, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Zap,
@@ -13,6 +13,7 @@ import {
   Fuel,
   Clock,
   Wind,
+  RefreshCw,
 } from "lucide-react";
 
 const SIX_H = 6 * 60 * 60 * 1000;
@@ -783,20 +784,18 @@ function GpsCard({
       .map(([date, rows]) => ({ date, rows }));
   }, [gpsHistory]);
 
-  const [dayIndex, setDayIndex] = useState(() => Math.max(0, days.length - 1));
-
-  useEffect(() => {
+  const [dayIndex, setDayIndex] = useState(0);
+  const [prevDaysLen, setPrevDaysLen] = useState(0);
+  if (days.length !== prevDaysLen) {
+    setPrevDaysLen(days.length);
     setDayIndex(Math.max(0, days.length - 1));
-  }, [days.length]);
+  }
 
   const [weatherRows, setWeatherRows] = useState<WeatherRow[]>([]);
 
   useEffect(() => {
     const rows = gpsHistory.length ? gpsHistory : history;
-    if (!rows.length) {
-      setWeatherRows([]);
-      return;
-    }
+    if (!rows.length) return;
 
     const sortedRows = [...rows].sort((a, b) => a.timestampMs - b.timestampMs);
     const cacheBucketMs = 60 * 60 * 1000;
@@ -982,11 +981,13 @@ function GpsCard({
     },
   ];
 
+  const [mountMs] = useState(() => Date.now());
+  const todayKey = localDateKey(mountMs);
+  const yesterdayKey = localDateKey(mountMs - 86_400_000);
+
   function dayLabel(date: string): string {
-    const today = localDateKey(Date.now());
-    const yesterday = localDateKey(Date.now() - 86_400_000);
-    if (date === today) return "Today";
-    if (date === yesterday) return "Yesterday";
+    if (date === todayKey) return "Today";
+    if (date === yesterdayKey) return "Yesterday";
     return new Date(date + "T12:00:00").toLocaleDateString([], {
       weekday: "short",
       day: "numeric",
@@ -2305,10 +2306,18 @@ export function SwipeDashboard({
   fuelTankCapacityL,
   gpsHistory = [],
 }: SwipeDashboardProps) {
+  const router = useRouter();
+  const [isRefreshing, startRefresh] = useTransition();
   const [activeCard, setActiveCard] = useState(0);
   const [dragging, setDragging] = useState(false);
   const dragStartRef = useRef(0);
   const [dragOffset, setDragOffset] = useState(0);
+
+  function handleRefresh() {
+    startRefresh(() => {
+      router.refresh();
+    });
+  }
 
   const history = useMemo(() => {
     if (!readings.length) return [];
@@ -2548,6 +2557,24 @@ export function SwipeDashboard({
             }}
           />
           {headerStats}
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            style={{
+              marginLeft: "auto",
+              background: "none",
+              border: "none",
+              cursor: isRefreshing ? "default" : "pointer",
+              padding: 6,
+              borderRadius: 6,
+              display: "flex",
+              alignItems: "center",
+              color: isRefreshing ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.3)",
+              transition: "color 0.15s ease",
+            }}
+          >
+            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : undefined} />
+          </button>
         </div>
 
         {/* Responsive card grid — 2-col on md, 4-col on lg+ (via globals.css) */}
@@ -2623,15 +2650,40 @@ export function SwipeDashboard({
           >
             <div
               style={{
-                fontSize: 11,
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                color: "rgba(255,255,255,0.3)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
                 marginBottom: 8,
-                fontFamily: "var(--font-geist-mono), monospace",
               }}
             >
-              {deviceId ?? "troopy-smartshunt"}
+              <span
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.15em",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,0.3)",
+                  fontFamily: "var(--font-geist-mono), monospace",
+                }}
+              >
+                {deviceId ?? "troopy-smartshunt"}
+              </span>
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: isRefreshing ? "default" : "pointer",
+                  padding: 4,
+                  borderRadius: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  color: isRefreshing ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.3)",
+                  transition: "color 0.15s ease",
+                }}
+              >
+                <RefreshCw size={13} className={isRefreshing ? "animate-spin" : undefined} />
+              </button>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               {headerStats}
