@@ -110,7 +110,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const readings = await getCachedWeatherReadings(deviceId, fromMs, toMs);
+  const bucketMs = 5 * 60 * 1000;
+  const bucketedFrom = Math.floor(fromMs / bucketMs) * bucketMs;
+  const bucketedTo = Math.floor(toMs / bucketMs) * bucketMs;
+
+  const readings = await getCachedWeatherReadings(deviceId, bucketedFrom, bucketedTo);
 
   return NextResponse.json(
     {
