@@ -40,26 +40,34 @@ const fetchWaterEstimate = unstable_cache(
     if (!lastFill) return null;
 
     if (lastFill.waterSnapshotMl !== null) {
-      const latestStationary = await prisma.telemetryReading.findFirst({
+      const readings = await prisma.telemetryReading.findMany({
         where: {
           timestampMs: { gte: BigInt(lastFill.filledAt.getTime()) },
           waterCumulativeMl: { not: null },
-          OR: [
-            { gpsSpeedKmph: null },
-            { gpsSpeedKmph: { lte: MOTION_THRESHOLD_KMPH } },
-          ],
         },
-        orderBy: { timestampMs: "desc" },
-        select: { waterCumulativeMl: true },
+        orderBy: { timestampMs: "asc" },
+        select: { waterCumulativeMl: true, gpsSpeedKmph: true },
       });
 
-      const waterUsedMl =
-        latestStationary?.waterCumulativeMl != null
-          ? Math.max(
-              0,
-              latestStationary.waterCumulativeMl - lastFill.waterSnapshotMl,
-            )
-          : 0;
+      let waterUsedMl = 0;
+      let prevStationary: number | null = lastFill.waterSnapshotMl;
+
+      for (const r of readings) {
+        if (r.waterCumulativeMl === null) continue;
+        const isStationary =
+          r.gpsSpeedKmph === null || r.gpsSpeedKmph <= MOTION_THRESHOLD_KMPH;
+        if (isStationary) {
+          if (prevStationary !== null) {
+            const delta = r.waterCumulativeMl - prevStationary;
+            if (delta > 0) waterUsedMl += delta;
+            // negative delta = counter reset — skip it, update baseline
+          }
+          prevStationary = r.waterCumulativeMl;
+        } else {
+          prevStationary = null;
+        }
+      }
+
       const remainingL = Math.max(0, WATER_TANK_L - waterUsedMl / 1000);
       return { remainingL, remainingPct: (remainingL / WATER_TANK_L) * 100 };
     }
